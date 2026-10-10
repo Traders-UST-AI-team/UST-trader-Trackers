@@ -1,0 +1,458 @@
+{
+ "note": "Hand-labelled event→contract pairs (labeller: Claude, 2026-10-09, from a random sample of rule-v1 links; NOT independently verified by a domain expert). label=true means a reasonable analyst would call the contract explicitly relevant to the item. Extend this file whenever a bad/good link is spotted; rule changes must not regress it. Splits: 'dev' = pairs used while designing rule v2; 'holdout-1' = a fresh random sample of rule-v2 output labelled AFTER v2 was frozen, then used to find its failure modes (so it is now also tuning data). Report a new untouched holdout for any final precision claim. 'holdout-2' = fresh sample of rule-v3 output labelled after v3 was frozen (labeller: Claude; many pairs borderline). Not tuned against. 'holdout-3' = pairs spotted after the source set was expanded to ~34 feeds (labelled by Claude; not tuned against).",
+ "pairs": [
+  {
+   "event": "Iran war live: Iranian media reports 'massive explosions' in Hormuz Strait. Explosions reported near the Strait of Hormuz, shipping affected.",
+   "contract": "Iran-Oman Hormuz Agreement by December 31?",
+   "label": true,
+   "split": "dev"
+  },
+  {
+   "event": "Houthis claim attack on Riyadh airport as airlines suspend flights to Saudi capital. Houthi missile strike, Saudi Arabia.",
+   "contract": "Saudi troops fighting in Yemen by October 31, 2026?",
+   "label": true,
+   "split": "dev"
+  },
+  {
+   "event": "Yemen's government announces all-out war to reclaim land from Houthis. Saudi-backed forces, military offensive in Yemen.",
+   "contract": "Saudi troops fighting in Yemen by October 10, 2026?",
+   "label": true,
+   "split": "dev"
+  },
+  {
+   "event": "Trump rules out new attack on Iran until after midterms as oil prices spike. Military strikes on Iran.",
+   "contract": "Will the U.S. invade Iran before 2027?",
+   "label": true,
+   "split": "dev"
+  },
+  {
+   "event": "IRGC Navy official violating vessels in Hormuz Strait 'punished every night'. Shipping, naval threat.",
+   "contract": "US-Iran Hormuz Agreement by October 31?",
+   "label": true,
+   "split": "dev"
+  },
+  {
+   "event": "Iran says Strait of Hormuz could reopen within a week as Tehran weighs US response. Shipping, oil.",
+   "contract": "US-Iran Hormuz Agreement by October 31?",
+   "label": true,
+   "split": "dev"
+  },
+  {
+   "event": "Houthis claim attack on Riyadh airport as airlines suspend flights. Houthi missile attack on Saudi Arabia.",
+   "contract": "Saudi troops enter Marib Governorate by October 31, 2026?",
+   "label": null,
+   "note": "ambiguous: same Saudi–Houthi conflict, but the contract is about a specific governorate the item never mentions. Excluded from scoring.",
+   "split": "dev"
+  },
+  {
+   "event": "USS Abraham Lincoln returns to San Diego after deployment during war on Iran. Naval deployment ends.",
+   "contract": "Iran charges Hormuz fees by December 31?",
+   "label": false,
+   "split": "dev"
+  },
+  {
+   "event": "Israelis demand accountability over 7 October failures three years after attacks. Hamas attack, security failures.",
+   "contract": "Will there be Houthi military action against Israel by October 31, 2026?",
+   "label": false,
+   "split": "dev"
+  },
+  {
+   "event": "Commemorations for victims of the 7 October Hamas attacks – in pictures. Hamas attack, Israel.",
+   "contract": "Israel military action against Lebanon on October 31?",
+   "label": false,
+   "split": "dev"
+  },
+  {
+   "event": "Israeli attacks kill four Palestinians in Gaza over past day. Israeli strikes, Gaza.",
+   "contract": "Israel military action against Lebanon on October 31?",
+   "label": false,
+   "split": "dev"
+  },
+  {
+   "event": "A father's agony after an Israeli air strike hits Gaza apartment. Israeli air strike, Gaza.",
+   "contract": "Israel military action against Lebanon on October 31?",
+   "label": false,
+   "split": "dev"
+  },
+  {
+   "event": "Yemen violence deepens concerns over child hunger crisis. Humanitarian situation in Yemen, children, civilians.",
+   "contract": "Pakistan military action against Yemen by December 31, 2026?",
+   "label": false,
+   "split": "dev"
+  },
+  {
+   "event": "Iranian press review: 80m barrels behind oil minister's resignation. Iran oil.",
+   "contract": "US-Iran Hormuz Agreement by October 15?",
+   "label": false,
+   "split": "dev"
+  },
+  {
+   "event": "Zamir says return to war with Iran may postpone Israel election as Pentagon prepares plans. Israel military, Iran strikes.",
+   "contract": "Will there be Houthi military action against Israel by October 31, 2026?",
+   "label": false,
+   "split": "dev"
+  },
+  {
+   "event": "Trump says comment that Iran could 'take out' Los Angeles was misread. Iran military threat.",
+   "contract": "Will the U.S. invade Iran before 2027?",
+   "label": true,
+   "split": "dev"
+  },
+  {
+   "event": "British consulate in East Jerusalem will stay open as UK mission, says Ed Miliband. Israel, diplomacy, consulate.",
+   "contract": "Israel x Iran ceasefire continues through October 31?",
+   "label": false,
+   "split": "dev"
+  },
+  {
+   "event": "Israel launches missile strikes on Hezbollah targets in southern Lebanon. Military strikes Israel Lebanon.",
+   "contract": "Israel military action against Lebanon on October 31?",
+   "label": true,
+   "split": "dev"
+  },
+  {
+   "event": "Saudi-led coalition says it intercepts three Houthi ballistic missiles. Missile attack, Saudi Arabia, Houthis.",
+   "contract": "Houthi military action against Saudi Arabia on October 2026?",
+   "label": true,
+   "split": "dev"
+  },
+  {
+   "event": "Gulf bloc calls for 'firm and deterrent' response to Houthi attacks on Saudi Arabia. Security, Saudi Arabia.",
+   "contract": "Will there be Houthi military action against Israel by October 31, 2026?",
+   "label": false,
+   "split": "dev"
+  },
+  {
+   "event": "USS Abraham Lincoln returns to San Diego after supporting Iran war. Aircraft carrier spent record 265 consecutive days at sea, received Presidential Unit Citation from defense chief",
+   "contract": "Will the U.S. invade Iran before 2027?. Will the U.S. invade Iran before 2027?",
+   "label": false,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Mecca defense pact puts Turkey’s commitment to Saudi under domestic scrutiny - analysis. The Mecca pact is moving from declaration to implementation, exposing unresolved questions in Turkey over troop deployments, parliamentary authority, and the risk of direct involvement in Yemen.",
+   "contract": "Pakistan military action against Yemen by October 31, 2026?. Pakistan military action against Yemen by...?",
+   "label": false,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Houthis ramp up missile attacks on Riyadh as Saudi-backed war in Yemen widens. The conflict, now an overspill of the US-Iran war, has added new chaos to a region already aflame, and threatens to draw other states into grueling mountain fighting.",
+   "contract": "Pakistan military action against Yemen by October 31, 2026?. Pakistan military action against Yemen by...?",
+   "label": false,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Houthis ramp up missile attacks on Riyadh as Saudi-backed war in Yemen widens. The conflict, now an overspill of the US-Iran war, has added new chaos to a region already aflame, and threatens to draw other states into grueling mountain fighting.",
+   "contract": "Saudi troops fighting in Yemen by October 10, 2026?. Saudi troops fighting in Yemen by...?",
+   "label": true,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Three people killed in Houthi attacks on Saudi Arabia airports, officials say. The Houthis have claimed responsibility for the attacks, which mark an escalation in the conflict.",
+   "contract": "Pakistan military action against Yemen by December 31, 2026?. Pakistan military action against Yemen by...?",
+   "label": false,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Three reasons Middle East oil supply is nearly back to pre-Iran war levels. Experts say US military assistance, using shuttle tankers and pipelines bypassing the Strait of Hormuz mean exports have rebounded.",
+   "contract": "Will Farsi, Hengam, Hormuz or Kharg Island no longer be under Iranian control by October 31, 2026?. Farsi, Hengam, Hormuz or Kharg Island no longer under Iranian control by...?",
+   "label": false,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Israeli gunfire and air strikes kill at least five in Gaza. Israeli gunfire and air strikes kill at least five in Gaza Three people have been killed by Israeli gunfire in Gaza City and northern Gaza since early Thursday, Al Jazeera reported, citing medical sources. In a separate attack, two people were killed and three wounded when an Israeli strike hit a vehicle in Gaza City's Tel al-Hawa neighbourhood. Another Israeli air strike on al-Tawam, north of Gaz",
+   "contract": "Israel x Turkey military clash before 2027?. Israel x Turkey military clash before 2027?",
+   "label": false,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Syria weighs military aid for Saudi Arabia amid war with Houthis, sources say. The Syrian president's media adviser, Ahmad Zaidan, denied that Saudi Arabia had requested that Syria deploy forces to help fight the Houthis in Yemen.",
+   "contract": "Syrian troops enter Yemen by October 31, 2026?. Syrian troops enter Yemen by...?",
+   "label": true,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Iran war live: Iranian media reports ‘massive explosions’ in Hormuz Strait. Iranian media reported massive explosions in the southern Strait of Hormuz, with Fars citing unnamed military sources.",
+   "contract": "Will Iran release a Trump voicemail about the Strait of Hormuz by October 31?. Iran releases Trump Hormuz voicemail by...?",
+   "label": false,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Middle East Operational Update 51. Maersk operational update 51 on Middle East shipping disruptions, booking suspensions, emergency freight rates, and fuel surcharge changes due to the Strait of Hormuz crisis.",
+   "contract": "Strait of Hormuz traffic returns to normal by December 31?. Strait of Hormuz traffic returns to normal by December 31?",
+   "label": true,
+   "split": "holdout-1"
+  },
+  {
+   "event": "France, Saudi Arabia weigh military options to protect Yanbu oil terminal, army chief says. France, Saudi Arabia weigh military options to protect Yanbu oil terminal, army chief says France and Saudi Arabia are studying several options involving French military assets to help protect the Yanbu oil terminal, France's Armed Forces Chief of Staff, General Fabien Mandon, said on Thursday. \"It's at the study phase at the moment with Saudi Arabia. We are examining different options to protect ",
+   "contract": "Will Saudi Arabia’s crude oil production in September 2026 be above 6.5 million bpd?. Saudi crude oil production in September",
+   "label": null,
+   "split": "holdout-1",
+   "note": "ambiguous; excluded from scoring"
+  },
+  {
+   "event": "Children brave snipers and mortars to go to school near Yemen front line. In rare access to Taiz, the BBC World Service speaks to children, teachers and families affected by the war.",
+   "contract": "Pakistan military action against Yemen by October 31, 2026?. Pakistan military action against Yemen by...?",
+   "label": false,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Saudi-led coalition says it intercepts three Houthi ballistic missiles. Saudi Arabia says two of the missiles intercepted were headed towards the capital, Riyadh.",
+   "contract": "Pakistan military action against Yemen by October 31, 2026?. Pakistan military action against Yemen by...?",
+   "label": false,
+   "split": "holdout-1"
+  },
+  {
+   "event": "NGOs say Israel bombed a journalist and appeared to attack ambulances trying to aid her – explainer. Journalist Amal Khalil was killed in April in what colleagues described as a sustained attack by Israeli forces. Rescuers attempted to dig her out of the rubble of a building that had been targeted by Israeli forces, who had also prevented them from providing life-saving assistance. Beirut-based Guardian correspondent Will Christou explains how investigations by Human Rights Watch (HRW), Amnesty I",
+   "contract": "Israel military action against Lebanon on October 31?. Israel military action against Lebanon on...?",
+   "label": true,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Lufthansa, Air India suspend flights to Riyadh airport after Houthi attacks. Lufthansa, Air India suspend flights to Riyadh airport after Houthi attacks Lufthansa Group and Air India will suspend flights to Riyadh, they said on Thursday, as Yemen's Houthis claimed an attack on the Saudi capital's airport. A Lufthansa spokesperson said the German airline group would suspend flights to Riyadh through 16 October because of \"current developments in the Middle East\". Air India ",
+   "contract": "Military action against Saudi Oil Pipeline (East-West) by October 31?. Military action against Saudi Oil Pipeline (East-West) by...?",
+   "label": false,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Flydubai attack investigation widens as alleged hijacker’s training in New Zealand scrutinised. Hamam al-Hammami spent 175 days in New Zealand until May 2019, as Australian Jewish group calls for full investigation into his time in Melbourne New Zealand authorities have launched their own investigation into the flydubai co-pilot who allegedly tried to hijack an Israel-bound plane, after police confirmed he underwent flight training there about a year after he abandoned a degree in Australia.",
+   "contract": "Israel x Turkey military clash before 2027?. Israel x Turkey military clash before 2027?",
+   "label": false,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Syria weighs military aid for Saudi Arabia amid war with Houthis, sources say. The Syrian president's media adviser, Ahmad Zaidan, denied that Saudi Arabia had requested that Syria deploy forces to help fight the Houthis in Yemen.",
+   "contract": "Saudi troops enter Marib Governorate by October 31, 2026?. Saudi troops enter Marib Governorate by...?",
+   "label": null,
+   "split": "holdout-1",
+   "note": "ambiguous; excluded from scoring"
+  },
+  {
+   "event": "Houthis warn staff to leave Saudi oil sites. Houthis warn staff to leave Saudi oil sites Yemen’s Houthi movement warned staff to leave Saudi oil facilities and claimed it had targeted King Khalid International Airport in Riyadh with a ballistic missile on Thursday. The Saudi-led coalition said it intercepted two ballistic missiles launched by the Houthis toward the Saudi capital Riyadh.",
+   "contract": "Pakistan military action against Yemen by October 31, 2026?. Pakistan military action against Yemen by...?",
+   "label": false,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Oil prices jump 5% on Middle East tensions and US hurricane threat. Global bond market sell-off continues and stocks fall amid reports White House has asked to see options for more strikes against Iran Business live – latest updates Oil prices have risen sharply amid fears about escalating tensions in the Middle East and a squeeze on production from the threat of a hurricane off the US coast. Brent crude, the international benchmark, rose by 5% to $105.3 a barrel ",
+   "contract": "Will Iran’s average daily crude oil production for September 2026 be at least 3.2M bpd?. Iran crude oil production in September",
+   "label": false,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Turkey expects no change in Israel's foreign policy after elections, FM Hakan Fidan says. Turkey is assessing how it can help Saudi Arabia defend against attacks by Yemen's Iran-aligned Houthi militants under a joint defense pact with Pakistan, Turkish FM Hakan Fidan said.",
+   "contract": "Will the U.S. invade Iran before 2027?. Will the U.S. invade Iran before 2027?",
+   "label": false,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Trump rules out new attack on Iran until after midterms as oil prices spike. Trump rules out new attack on Iran until after midterms as oil prices spike US President Donald Trump on Thursday ruled out new attacks on Iran until after the November mid-term elections, following several reports that Washington is gearing up for a new round of escalation. \"We are having productive discussions with the Islamic Republic of Iran,\" Trump wrote in a post on Truth Social. \"We will no",
+   "contract": "US reissues Iran oil sanction relief by October 31?. US reissues Iran oil sales sanction relief by...?",
+   "label": true,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Middle East Operational Update 51. Maersk operational update 51 on Middle East shipping disruptions, booking suspensions, emergency freight rates, and fuel surcharge changes due to the Strait of Hormuz crisis.",
+   "contract": "Will the 7-day moving average of transit calls through the Strait of Hormuz as reported by the IMF PortWatch be above 60 before November 1, 2026? — Before Nov 1, 2026. When will traffic at the Strait of Hormuz return to normal?",
+   "label": true,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Turkey assesses defensive support for Saudi Arabia amid Houthi attacks. Turkey assesses defensive support for Saudi Arabia amid Houthi attacks Turkey is assessing how it can help Saudi Arabia defend against attacks by Yemen’s Iran-aligned Houthi movement under a joint defence pact with Pakistan, Foreign Minister Hakan Fidan said on Thursday, ruling out Turkish participation in offensive operations. Turkey, Pakistan and Saudi Arabia signed the Mecca Joint Defence Agree",
+   "contract": "Saudi troops fighting in Yemen by October 31, 2026?. Saudi troops fighting in Yemen by...?",
+   "label": true,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Mecca defense pact puts Turkey’s commitment to Saudi under domestic scrutiny - analysis. The Mecca pact is moving from declaration to implementation, exposing unresolved questions in Turkey over troop deployments, parliamentary authority, and the risk of direct involvement in Yemen.",
+   "contract": "Military action against Saudi Oil Pipeline (East-West) by October 15?. Military action against Saudi Oil Pipeline (East-West) by...?",
+   "label": false,
+   "split": "holdout-1"
+  },
+  {
+   "event": "Iran says Strait of Hormuz could reopen within a week as Tehran weighs US response. Iran has now warned regional countries that any attempt to open new routes for oil exports would be considered hostile, a senior regional official close to Tehran said.",
+   "contract": "Iran charges Hormuz fees by December 31?. Iran charges Hormuz fees by...?",
+   "label": true,
+   "split": "holdout-2"
+  },
+  {
+   "event": "France, Saudi Arabia weigh military options to protect Yanbu oil terminal, army chief says. France, Saudi Arabia weigh military options to protect Yanbu oil terminal, army chief says France and Saudi Arabia are studying several options involving French military assets to help protect the Yanbu oil terminal, France's Armed Forces Chief of Staff, General Fabien Mandon, said on Thursday. \"It's at the study phase at the moment with Saudi Arabia. We are examining different options to protect ",
+   "contract": "Will Saudi Arabia’s crude oil production in September 2026 be above 6.5 million bpd?. Saudi crude oil production in September",
+   "label": null,
+   "split": "holdout-2",
+   "note": "borderline: related context, not an explicit one-to-one match; excluded from precision/recall"
+  },
+  {
+   "event": "Mecca defense pact puts Turkey’s commitment to Saudi under domestic scrutiny - analysis. The Mecca pact is moving from declaration to implementation, exposing unresolved questions in Turkey over troop deployments, parliamentary authority, and the risk of direct involvement in Yemen.",
+   "contract": "Saudi troops enter Taiz Governorate by December 31, 2026?. Saudi troops enter Taiz by...?",
+   "label": false,
+   "split": "holdout-2"
+  },
+  {
+   "event": "Turkey expects no change in Israel's foreign policy after elections, FM Hakan Fidan says. Turkey is assessing how it can help Saudi Arabia defend against attacks by Yemen's Iran-aligned Houthi militants under a joint defense pact with Pakistan, Turkish FM Hakan Fidan said.",
+   "contract": "Saudi troops fighting in Yemen by October 31, 2026?. Saudi troops fighting in Yemen by...?",
+   "label": null,
+   "split": "holdout-2",
+   "note": "borderline: related context, not an explicit one-to-one match; excluded from precision/recall"
+  },
+  {
+   "event": "Middle East Operational Update 51. Maersk operational update 51 on Middle East shipping disruptions, booking suspensions, emergency freight rates, and fuel surcharge changes due to the Strait of Hormuz crisis.",
+   "contract": "Will Strait of Hormuz traffic return to normal in November?. Which month will Strait of Hormuz traffic return to normal?",
+   "label": true,
+   "split": "holdout-2"
+  },
+  {
+   "event": "IRGC Navy official violating vessels in Hormuz Strait 'punished every night'. The political deputy of the Islamic Revolutionary Guard Corps (IRGC) Navy said that its forces have been carrying out nightly operations in the Strait of Hormuz targeting what it considers as violating vessels. \"Every night, from the beginning of the war until now, the IRGC Navy has carried out these operations to protect the country’s interests,\" Ali Mohammadi told the Fars news agency. \"The IRGC",
+   "contract": "US-Iran Hormuz Agreement by October 15?. US-Iran Hormuz Agreement by...?",
+   "label": true,
+   "split": "holdout-2"
+  },
+  {
+   "event": "Lufthansa, Air India suspend flights to Riyadh airport after Houthi attacks. Lufthansa, Air India suspend flights to Riyadh airport after Houthi attacks Lufthansa Group and Air India will suspend flights to Riyadh, they said on Thursday, as Yemen's Houthis claimed an attack on the Saudi capital's airport. A Lufthansa spokesperson said the German airline group would suspend flights to Riyadh through 16 October because of \"current developments in the Middle East\". Air India ",
+   "contract": "Saudi troops fighting in Yemen by October 31, 2026?. Saudi troops fighting in Yemen by...?",
+   "label": null,
+   "split": "holdout-2",
+   "note": "borderline: related context, not an explicit one-to-one match; excluded from precision/recall"
+  },
+  {
+   "event": "France, Saudi Arabia weigh military options to protect Yanbu oil terminal, army chief says. France, Saudi Arabia weigh military options to protect Yanbu oil terminal, army chief says France and Saudi Arabia are studying several options involving French military assets to help protect the Yanbu oil terminal, France's Armed Forces Chief of Staff, General Fabien Mandon, said on Thursday. \"It's at the study phase at the moment with Saudi Arabia. We are examining different options to protect ",
+   "contract": "Military action against Saudi Oil Pipeline (East-West) by October 31?. Military action against Saudi Oil Pipeline (East-West) by...?",
+   "label": null,
+   "split": "holdout-2",
+   "note": "borderline: related context, not an explicit one-to-one match; excluded from precision/recall"
+  },
+  {
+   "event": "Yemen's government announces all-out war to reclaim land from Houthis. The Yemeni president's announcement comes amid an exchange of strikes between the Houthis and the Saudi-led coalition.",
+   "contract": "Saudi troops fighting in Yemen by October 10, 2026?. Saudi troops fighting in Yemen by...?",
+   "label": true,
+   "split": "holdout-2"
+  },
+  {
+   "event": "Syria weighs military aid for Saudi Arabia amid war with Houthis, sources say. The Syrian president's media adviser, Ahmad Zaidan, denied that Saudi Arabia had requested that Syria deploy forces to help fight the Houthis in Yemen.",
+   "contract": "Saudi troops fighting in Yemen by October 10, 2026?. Saudi troops fighting in Yemen by...?",
+   "label": null,
+   "split": "holdout-2",
+   "note": "borderline: related context, not an explicit one-to-one match; excluded from precision/recall"
+  },
+  {
+   "event": "Houthi forces appear to make slow advance in south-west Yemen. Group’s fighters hit key airport in Aden with explosive moments before plane from Cairo was due to land Houthi forces appeared to be making slow advances on Wednesday in south-west Yemen, approaching the city of Taiz and firing a missile and an explosive towards the airport in Aden, the chief international hub of the Saudi-backed government. The explosive hit the key airport moments before a plane",
+   "contract": "Saudi troops fighting in Yemen by October 10, 2026?. Saudi troops fighting in Yemen by...?",
+   "label": true,
+   "split": "holdout-2"
+  },
+  {
+   "event": "Putin tells Pezeshkian he will 'do everything' to help end war. Putin tells Pezeshkian he will 'do everything' to help end war Russian President Vladimir Putin held talks with his Iranian counterpart, Masoud Pezeshkian, on Thursday and promised to \"do everything\" to help end the war in the Middle East. \"We are ready to do everything that is in our power to contribute to the settlement of this situation,\" Putin said, adding that Iran had made \"real efforts to e",
+   "contract": "Israel x Iran ceasefire continues through October 31?. Israel x Iran ceasefire continues through...?",
+   "label": null,
+   "split": "holdout-2",
+   "note": "borderline: related context, not an explicit one-to-one match; excluded from precision/recall"
+  },
+  {
+   "event": "Trump rules out new attack on Iran until after midterms as oil prices spike. Trump rules out new attack on Iran until after midterms as oil prices spike US President Donald Trump on Thursday ruled out new attacks on Iran until after the November mid-term elections, following several reports that Washington is gearing up for a new round of escalation. \"We are having productive discussions with the Islamic Republic of Iran,\" Trump wrote in a post on Truth Social. \"We will no",
+   "contract": "Will Donald Trump meet in person the Supreme Leader of Iran before Jan 1, 2027?. Will Trump meet the Supreme Leader of Iran?",
+   "label": null,
+   "split": "holdout-2",
+   "note": "borderline: related context, not an explicit one-to-one match; excluded from precision/recall"
+  },
+  {
+   "event": "Houthis ramp up missile attacks on Riyadh as Saudi-backed war in Yemen widens. The conflict, now an overspill of the US-Iran war, has added new chaos to a region already aflame, and threatens to draw other states into grueling mountain fighting.",
+   "contract": "Saudi troops fighting in Yemen by October 31, 2026?. Saudi troops fighting in Yemen by...?",
+   "label": true,
+   "split": "holdout-2"
+  },
+  {
+   "event": "Turkey rules out launching attacks on Yemen from Saudi Arabia. Turkey rules out launching attacks on Yemen from Saudi Arabia Submitted by Ragip Soylu on Thu, 10/08/2026 - 15:28 Turkish foreign minister says Mecca pact is strictly defensive, as Ankara mulls deploying forces and equipment to Saudi Arabia against Houthi attacks Pakistan’s Foreign Minister Ishaq Dar, Saudi Defence Minister Khalid bin Salman and Turkish Foreign Minister Hakan Fidan in Riyadh on 5 ",
+   "contract": "Saudi troops fighting in Yemen by October 10, 2026?. Saudi troops fighting in Yemen by...?",
+   "label": true,
+   "split": "holdout-2"
+  },
+  {
+   "event": "Watch: At least one plane severely damaged as Houthis claim third Riyadh airport attack. Watch: At least one plane severely damaged as Houthis claim third Riyadh airport attack Yemen's Houthis said they had targeted Riyadh's airport for a third time on Thursday, hours after the Saudi-led coalition said it had intercepted missiles fired in an earlier attack. Ansar Allah military spokesperson Yahya Saree said the group had launched two missiles at the Riyadh airport, one at an airport i",
+   "contract": "Saudi troops fighting in Yemen by October 31, 2026?. Saudi troops fighting in Yemen by...?",
+   "label": null,
+   "split": "holdout-2",
+   "note": "borderline: related context, not an explicit one-to-one match; excluded from precision/recall"
+  },
+  {
+   "event": "No US attack on Iran before midterm elections, Trump says. No US attack on Iran before midterm elections, Trump says Donald Trump said on Thursday that the United States is having productive discussions with Iran and will not launch an attack on the country before US midterm congressional elections in November. \"We are having productive discussions with the Islamic Republic of Iran,\" Trump wrote in a post on Truth Social. He said the US blockade of Irania",
+   "contract": "US-Iran Hormuz Agreement by October 15?. US-Iran Hormuz Agreement by...?",
+   "label": null,
+   "split": "holdout-2",
+   "note": "borderline: related context, not an explicit one-to-one match; excluded from precision/recall"
+  },
+  {
+   "event": "Turkey assesses defensive support for Saudi Arabia amid Houthi attacks. Turkey assesses defensive support for Saudi Arabia amid Houthi attacks Turkey is assessing how it can help Saudi Arabia defend against attacks by Yemen’s Iran-aligned Houthi movement under a joint defence pact with Pakistan, Foreign Minister Hakan Fidan said on Thursday, ruling out Turkish participation in offensive operations. Turkey, Pakistan and Saudi Arabia signed the Mecca Joint Defence Agree",
+   "contract": "Pakistan military action against Yemen by October 31, 2026?. Pakistan military action against Yemen by...?",
+   "label": true,
+   "split": "holdout-2"
+  },
+  {
+   "event": "Mecca defense pact puts Turkey’s commitment to Saudi under domestic scrutiny - analysis. The Mecca pact is moving from declaration to implementation, exposing unresolved questions in Turkey over troop deployments, parliamentary authority, and the risk of direct involvement in Yemen.",
+   "contract": "Saudi troops enter Marib Governorate by October 31, 2026?. Saudi troops enter Marib Governorate by...?",
+   "label": null,
+   "split": "holdout-2",
+   "note": "borderline: related context, not an explicit one-to-one match; excluded from precision/recall"
+  },
+  {
+   "event": "Houthis ramp up missile attacks on Riyadh as Saudi-backed war in Yemen widens. The conflict, now an overspill of the US-Iran war, has added new chaos to a region already aflame, and threatens to draw other states into grueling mountain fighting.",
+   "contract": "Saudi troops fighting in Yemen by October 10, 2026?. Saudi troops fighting in Yemen by...?",
+   "label": true,
+   "split": "holdout-2"
+  },
+  {
+   "event": "Iran war live: Iranian media reports ‘massive explosions’ in Hormuz Strait. Iranian media reported massive explosions in the southern Strait of Hormuz, with Fars citing unnamed military sources.",
+   "contract": "Iran charges Hormuz fees by December 31?. Iran charges Hormuz fees by...?",
+   "label": true,
+   "split": "holdout-2"
+  },
+  {
+   "event": "Strait of Hormuz crisis fuels Cairo's plastic recycling business. In the heart of the Egyptian capital Cairo, within the labyrinthine streets of the Manshiyet Nasser district, nearly 120,000 residents process a third of the megacity's waste every day. Long marginalised, these informal recycling specialists are now undergoing a dramatic transformation due to geopolitical tensions in the Strait of Hormuz, through which polyethylene from the Gulf usually passes.",
+   "contract": "Will Strait of Hormuz traffic return to normal in October?. Which month will Strait of Hormuz traffic return to normal?",
+   "label": false,
+   "split": "holdout-3"
+  },
+  {
+   "event": "Houthis abduct, indoctrinate kids to believe they are fighting Jews, Yemeni journalist tells 'Post'. A said the Israel-Hamas War had been a “good excuse to recruit,” with videos of the war in Gaza regularly played to children to incite them against Israel.",
+   "contract": "Will there be Houthi military action against Israel by October 31, 2026?. Houthi military action against Israel by...?",
+   "label": false,
+   "split": "holdout-3"
+  },
+  {
+   "event": "Saudi Arabia warns Gulf security inseparable from global stability amid regional tensions. Saudi Arabia’s Foreign Minister warned on Saturday that escalating threats across the Middle East risked international peace, energy security and global trade, calling for stronger international cooperation to protect Gulf States and vital shipping routes.",
+   "contract": "Will Saudi Arabia’s crude oil production in September 2026 be above 6.5 million bpd?. Saudi crude oil production in September",
+   "label": false,
+   "split": "holdout-3"
+  },
+  {
+   "event": "Houthi attack kills 3, wounds dozens in Saudi Arabia. ",
+   "contract": "Saudi troops fighting in Yemen by October 10, 2026?. Saudi troops fighting in Yemen by...?",
+   "label": true,
+   "split": "holdout-3"
+  },
+  {
+   "event": "Attack Risks Rise for Tankers as Iran Vows to Block More Hormuz Routes. Tankers are facing a higher risk of attacks and intimidation as they try to get critical shipments through the Strait of Hormuz after Iran issued new warnings it would block routes that it has not authorized, sources said.",
+   "contract": "US-Iran Hormuz Agreement by October 15?. US-Iran Hormuz Agreement by...?",
+   "label": true,
+   "split": "holdout-3"
+  },
+  {
+   "event": "Strait of Hormuz firmly in hands of combatants of Islam: IRGC deputy chief. The deputy IRGC commander-in-chief has stated that the Strait of Hormuz is firmly under the control of the combatants of Islam.",
+   "contract": "US-Iran Hormuz Agreement by October 31?. US-Iran Hormuz Agreement by...?",
+   "label": true,
+   "split": "holdout-3"
+  },
+  {
+   "event": "Life in Iran’s War-Torn South on the Strait of Hormuz. ",
+   "contract": "Iran charges Hormuz fees by October 31?. Iran charges Hormuz fees by...?",
+   "label": null,
+   "split": "holdout-3",
+   "note": "borderline"
+  },
+  {
+   "event": "Three reasons Middle East oil supply is nearly back to pre-Iran war levels. Experts say US military assistance, using shuttle tankers and pipelines bypassing the Strait of Hormuz mean exports have rebounded.",
+   "contract": "Strait of Hormuz traffic returns to normal by October 31?. Strait of Hormuz traffic returns to normal by October 31?",
+   "label": null,
+   "split": "holdout-3",
+   "note": "borderline"
+  }
+ ]
+}

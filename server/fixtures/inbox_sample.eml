@@ -1,0 +1,24 @@
+From: =?UTF-8?B?U2FtcGxlIE1hcml0aW1lIEFkdmlzb3J5IChzeW50aGV0aWMp?= <alerts@example-advisory.test>
+To: analyst@example.test
+Subject: Fwd: [External] WARNING 042/26 - Tanker reports explosion near Fujairah anchorage
+Date: Thu, 08 Oct 2026 14:32:00 +0000
+Message-ID: <synthetic-042-26@example-advisory.test>
+X-Fixture: SYNTHETIC format example created for tests. Not a real advisory and not any real organisation's wording.
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="BOUNDARY42"
+
+--BOUNDARY42
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+A tanker master reported an explosion near the vessel at the Fujairah anchorage =
+approximately 12 NM east of the port. No casualties reported. Vessels are advised to transit with caution.
+=E2=80=94 synthetic test text
+> quoted earlier message that must be dropped
+-- 
+Signature block that must be dropped
+--BOUNDARY42
+Content-Type: text/html; charset="utf-8"
+
+<html><body><p>HTML copy that must not be preferred over text/plain</p></body></html>
+--BOUNDARY42--

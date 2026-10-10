@@ -1,0 +1,9 @@
+[
+ {
+  "match": "example-advisory.test",
+  "name": "Sample maritime advisory list (synthetic)",
+  "tier": "Tier-2",
+  "affiliation": "Synthetic example profile \u2014 replace with a real sender you are entitled to receive",
+  "scope": "Reports relayed by the sender; not independently verified"
+ }
+]

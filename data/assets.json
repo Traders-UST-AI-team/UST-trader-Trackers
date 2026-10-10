@@ -1,0 +1,336 @@
+{
+  "_readme": "Curated static reference layer for the map. Every fact carries its source URL, the source's own date, and when/how it was read. Coordinates are NOT taken from the cited sources: they were entered from general public geography and are approximate (see precision). Facts were read via page-fetch summaries on 2026-10-09 and are NOT human-reviewed (verified_by says so). A relation or fact missing here means 'not supported by a source I could read', not 'does not exist'. Static background only: nothing here states current operating status. `aliases` are names used ONLY to detect an asset explicitly named in an item's text.",
+  "retrieved_at": "2026-10-09",
+  "assets": [
+    {
+      "id": "hormuz",
+      "name": "Strait of Hormuz",
+      "type": "chokepoint",
+      "lat": 26.57,
+      "lng": 56.25,
+      "precision": "region",
+      "facts": [
+        {
+          "claim": "Oil flow through the strait averaged about 20 million barrels/day in 2024 (about 20% of global petroleum liquids consumption); flows in 1Q25 were roughly flat vs 2024.",
+          "source_title": "EIA Today in Energy article on the Strait of Hormuz (published 2025-06-16; title not captured)",
+          "source_url": "https://www.eia.gov/todayinenergy/detail.php?id=65504",
+          "source_date": "2025-06-16",
+          "period": "2024; 1Q25",
+          "unit": "million b/d"
+        },
+        {
+          "claim": "About one-fifth of global LNG trade transited the strait in 2024, mainly from Qatar (share of global trade, not a volume).",
+          "source_title": "same",
+          "source_url": "https://www.eia.gov/todayinenergy/detail.php?id=65504",
+          "source_date": "2025-06-16",
+          "period": "2024",
+          "unit": "share of global LNG trade"
+        },
+        {
+          "claim": "Saudi Arabia's crude and condensate exports were 38% of Hormuz crude flows (5.5 million b/d) in 2024; UAE and Kuwait volumes were lowered by OPEC+ cuts.",
+          "source_title": "same",
+          "source_url": "https://www.eia.gov/todayinenergy/detail.php?id=65504",
+          "source_date": "2025-06-16",
+          "period": "2024",
+          "unit": "million b/d"
+        }
+      ],
+      "caveat": "Historical flow context, not current throughput. Does not say whether the strait is open or restricted today.",
+      "verified_by": "agent (page-fetch summary); not human-reviewed",
+      "aliases": [
+        "Strait of Hormuz",
+        "Hormuz"
+      ]
+    },
+    {
+      "id": "east-west-pipeline",
+      "name": "Saudi East-West crude pipeline (Abqaiq → Yanbu)",
+      "type": "pipeline",
+      "lat": 25.0,
+      "lng": 43.5,
+      "precision": "region",
+      "line": [
+        [
+          25.94,
+          49.68
+        ],
+        [
+          24.09,
+          38.06
+        ]
+      ],
+      "line_note": "Schematic straight line between the two endpoints named by EIA; NOT the real route.",
+      "facts": [
+        {
+          "claim": "Stated capacity 5 million b/d (temporarily expanded to 7.0 million b/d in 2019); runs from the Abqaiq processing center near the Persian Gulf to Yanbu on the Red Sea. EIA labels it an Aramco pipeline.",
+          "source_title": "EIA Today in Energy (Hormuz)",
+          "source_url": "https://www.eia.gov/todayinenergy/detail.php?id=65504",
+          "source_date": "2025-06-16",
+          "period": "capacity as stated",
+          "unit": "million b/d"
+        },
+        {
+          "claim": "EIA estimates about 2.6 million b/d of Saudi + UAE pipeline capacity could be available to bypass Hormuz in a disruption; these pipelines often do not run at full capacity.",
+          "source_title": "same",
+          "source_url": "https://www.eia.gov/todayinenergy/detail.php?id=65504",
+          "source_date": "2025-06-16",
+          "period": "estimate",
+          "unit": "million b/d"
+        }
+      ],
+      "caveat": "Capacity is not current utilisation or spare capacity.",
+      "verified_by": "agent (page-fetch summary); not human-reviewed",
+      "aliases": [
+        "East-West pipeline",
+        "East–West pipeline",
+        "East West pipeline",
+        "Petroline"
+      ]
+    },
+    {
+      "id": "abqaiq",
+      "name": "Abqaiq processing center",
+      "type": "processing",
+      "lat": 25.94,
+      "lng": 49.68,
+      "precision": "city",
+      "facts": [
+        {
+          "claim": "Named by EIA as the starting point of the East-West crude pipeline.",
+          "source_title": "EIA Today in Energy (Hormuz)",
+          "source_url": "https://www.eia.gov/todayinenergy/detail.php?id=65504",
+          "source_date": "2025-06-16",
+          "period": "—",
+          "unit": "—"
+        }
+      ],
+      "caveat": "Only its role as a pipeline start is sourced here; no throughput or status claims.",
+      "verified_by": "agent (page-fetch summary); not human-reviewed",
+      "aliases": [
+        "Abqaiq",
+        "Buqayq"
+      ]
+    },
+    {
+      "id": "yanbu",
+      "name": "Yanbu (Red Sea port)",
+      "type": "port",
+      "lat": 24.09,
+      "lng": 38.06,
+      "precision": "city",
+      "facts": [
+        {
+          "claim": "Named by EIA as the Red Sea end of the East-West crude pipeline.",
+          "source_title": "EIA Today in Energy (Hormuz)",
+          "source_url": "https://www.eia.gov/todayinenergy/detail.php?id=65504",
+          "source_date": "2025-06-16",
+          "period": "—",
+          "unit": "—"
+        }
+      ],
+      "caveat": "Only its role as a pipeline endpoint is sourced here.",
+      "verified_by": "agent (page-fetch summary); not human-reviewed",
+      "aliases": [
+        "Yanbu"
+      ]
+    },
+    {
+      "id": "fujairah",
+      "name": "Fujairah oil export terminal",
+      "type": "terminal",
+      "lat": 25.12,
+      "lng": 56.34,
+      "precision": "city",
+      "facts": [
+        {
+          "claim": "The Abu Dhabi Crude Oil Pipeline (about 406 km) carries crude from an ADNOC Onshore collection center in Abu Dhabi to the Fujairah export terminal, giving access to the Arabian Sea; the pipeline entity is wholly owned by ADNOC.",
+          "source_title": "ADNOC Pipelines — Who we are",
+          "source_url": "https://adnoc.ae/en/adnoc-pipelines/about-us/who-we-are",
+          "source_date": null,
+          "period": "page undated",
+          "unit": "km"
+        },
+        {
+          "claim": "Stated UAE pipeline capacity 1.8 million b/d, linking onshore fields to Fujairah on the Gulf of Oman.",
+          "source_title": "EIA Today in Energy (Hormuz)",
+          "source_url": "https://www.eia.gov/todayinenergy/detail.php?id=65504",
+          "source_date": "2025-06-16",
+          "period": "capacity as stated",
+          "unit": "million b/d"
+        }
+      ],
+      "caveat": "The pipeline's origin point is not specified in the sources read, so no line is drawn. ADNOC's page gives no capacity figure; the capacity above is EIA's.",
+      "verified_by": "agent (page-fetch summary); not human-reviewed",
+      "aliases": [
+        "Fujairah"
+      ]
+    },
+    {
+      "id": "jask",
+      "name": "Jask export terminal (Goreh–Jask pipeline)",
+      "type": "terminal",
+      "lat": 25.65,
+      "lng": 57.77,
+      "precision": "city",
+      "facts": [
+        {
+          "claim": "Iran's Goreh–Jask pipeline has effective capacity of around 300,000 b/d and connects to the Jask terminal on the Gulf of Oman; EIA does not state the pipeline's start point.",
+          "source_title": "EIA Today in Energy (Hormuz)",
+          "source_url": "https://www.eia.gov/todayinenergy/detail.php?id=65504",
+          "source_date": "2025-06-16",
+          "period": "effective capacity as stated",
+          "unit": "b/d"
+        }
+      ],
+      "caveat": "Effective capacity as characterised by EIA in 2025; not current throughput.",
+      "verified_by": "agent (page-fetch summary); not human-reviewed",
+      "aliases": [
+        "Jask",
+        "Goreh-Jask",
+        "Goreh–Jask"
+      ]
+    },
+    {
+      "id": "bab-el-mandeb",
+      "name": "Bab el-Mandeb Strait",
+      "type": "chokepoint",
+      "lat": 12.58,
+      "lng": 43.33,
+      "precision": "region",
+      "facts": [
+        {
+          "claim": "Combined oil shipments via the Suez Canal, SUMED pipeline and Bab el-Mandeb were about 12% of total seaborne-traded oil in 1H 2023. The article gives no separate volume for Bab el-Mandeb.",
+          "source_title": "EIA Today in Energy: Red Sea chokepoints are critical for international oil and natural gas flows",
+          "source_url": "https://www.eia.gov/todayinenergy/detail.php?id=61025",
+          "source_date": "2023-12-04",
+          "period": "1H 2023",
+          "unit": "share of seaborne oil"
+        }
+      ],
+      "caveat": "Dated 2023 and combined with Suez/SUMED; says nothing about current traffic.",
+      "verified_by": "agent (page-fetch summary); not human-reviewed",
+      "aliases": [
+        "Bab el-Mandeb",
+        "Bab al-Mandab",
+        "Bab el Mandeb",
+        "Bab-el-Mandeb"
+      ]
+    },
+    {
+      "id": "suez-sumed",
+      "name": "Suez Canal / SUMED pipeline",
+      "type": "chokepoint",
+      "lat": 30.46,
+      "lng": 32.34,
+      "precision": "region",
+      "facts": [
+        {
+          "claim": "The SUMED pipeline connects the Red Sea with the Mediterranean through Egypt; stated capacity 2.5 million b/d.",
+          "source_title": "EIA Today in Energy (Red Sea chokepoints)",
+          "source_url": "https://www.eia.gov/todayinenergy/detail.php?id=61025",
+          "source_date": "2023-12-04",
+          "period": "capacity as stated",
+          "unit": "million b/d"
+        },
+        {
+          "claim": "Combined Suez Canal LNG flows peaked at 4.5 Bcf/d in 2021 and 2022 and were 4.1 Bcf/d in 1H 2023.",
+          "source_title": "same",
+          "source_url": "https://www.eia.gov/todayinenergy/detail.php?id=61025",
+          "source_date": "2023-12-04",
+          "period": "2021–1H 2023",
+          "unit": "Bcf/d"
+        }
+      ],
+      "caveat": "Dated 2023; not current.",
+      "verified_by": "agent (page-fetch summary); not human-reviewed",
+      "aliases": [
+        "Suez Canal",
+        "SUMED",
+        "Suez"
+      ]
+    },
+    {
+      "id": "ras-laffan",
+      "name": "Ras Laffan Industrial City (Qatar LNG hub)",
+      "type": "lng",
+      "lat": 25.93,
+      "lng": 51.55,
+      "precision": "city",
+      "facts": [
+        {
+          "claim": "QatarEnergy describes Ras Laffan as its onshore base for processing North Field gas, about 80 km north of Doha on the Persian Gulf coast; Ras Laffan Port is described as owned and operated by QatarEnergy with six LNG berths.",
+          "source_title": "QatarEnergy — Industrial Cities / Ports Information (read through a search-result summary, not the full page)",
+          "source_url": "https://www.qatarenergy.qa/en/Whatwedo/IndustrialCities/",
+          "source_date": null,
+          "period": "page undated",
+          "unit": "—"
+        },
+        {
+          "claim": "QatarEnergy LNG's corporate-structure page lists shareholders and capacities for each venture (e.g. N(2) trains 4–5 at 7.8 MTPA each; NFE ventures marked under construction). It does not itself state that the ventures are at Ras Laffan.",
+          "source_title": "QatarEnergy LNG — Corporate Structure",
+          "source_url": "https://www.qatarenergylng.qa/AboutUs/Corporate-Structure",
+          "source_date": null,
+          "period": "page undated",
+          "unit": "MTPA"
+        }
+      ],
+      "caveat": "Third-party reporting (not cited here) describes damage to Ras Laffan in March 2026; current operating status was not checked. This entry is background only.",
+      "verified_by": "agent (page-fetch + search summary); not human-reviewed",
+      "aliases": [
+        "Ras Laffan"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "company": "ADNOC",
+      "relation": "owns",
+      "asset_id": "fujairah",
+      "detail": "Abu Dhabi Crude Oil Pipeline (the pipeline entity feeding Fujairah) is wholly owned by ADNOC.",
+      "source_url": "https://adnoc.ae/en/adnoc-pipelines/about-us/who-we-are",
+      "valid_as_of": "page undated (read 2026-10-09)",
+      "verified_by": "agent (page-fetch summary); not human-reviewed"
+    },
+    {
+      "company": "Aramco",
+      "relation": "owns",
+      "asset_id": "east-west-pipeline",
+      "detail": "EIA labels the East-West crude pipeline as Aramco's. Ownership/operatorship was not checked against Aramco documents.",
+      "source_url": "https://www.eia.gov/todayinenergy/detail.php?id=65504",
+      "valid_as_of": "2025-06-16",
+      "verified_by": "agent (EIA label); not human-reviewed"
+    },
+    {
+      "company": "QatarEnergy",
+      "relation": "operates",
+      "asset_id": "ras-laffan",
+      "detail": "Ras Laffan Port described as owned and operated by QatarEnergy.",
+      "source_url": "https://www.qatarenergy.qa/en/Whatwedo/IndustrialCities/",
+      "valid_as_of": "page undated (read 2026-10-09 via search summary)",
+      "verified_by": "agent (search summary); not human-reviewed"
+    },
+    {
+      "company": "ExxonMobil",
+      "relation": "equity_in_venture",
+      "asset_id": "ras-laffan",
+      "detail": "Per QatarEnergy LNG's table: 30% of N(2) Train 4; 18.3% of N(2) Train 5; 30% of S(3). The table does not state the ventures' location; the Ras Laffan link is inferred from the other QatarEnergy page and is not a sourced statement.",
+      "source_url": "https://www.qatarenergylng.qa/AboutUs/Corporate-Structure",
+      "valid_as_of": "page undated (read 2026-10-09)",
+      "verified_by": "agent (page-fetch summary); not human-reviewed; location link inferred"
+    },
+    {
+      "company": "Shell",
+      "relation": "equity_in_venture",
+      "asset_id": "ras-laffan",
+      "detail": "Per the same table: 30% of N(4) Train 7; 25% of NFE(2) (under construction). Location link inferred as above.",
+      "source_url": "https://www.qatarenergylng.qa/AboutUs/Corporate-Structure",
+      "valid_as_of": "page undated (read 2026-10-09)",
+      "verified_by": "agent (page-fetch summary); not human-reviewed; location link inferred"
+    }
+  ],
+  "not_included": [
+    "Kharg Island / Iranian terminals other than Jask: no source I could read supported specific claims.",
+    "Aramco asset facts beyond the EIA mentions: the 2024 annual report PDF exceeded the fetch size limit and was not read.",
+    "Current operating status of any asset: none of these sources provide it."
+  ]
+}

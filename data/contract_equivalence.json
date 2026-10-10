@@ -1,0 +1,4 @@
+{
+  "_readme": "Human-verified equivalent contract pairs across venues. A pair belongs here ONLY after a named person has checked outcome definition, deadline/time zone and resolution source on both venues. Shipped empty on purpose: no pair has been verified. Candidates the tracker proposes are text-similar only.",
+  "pairs": []
+}

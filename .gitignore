@@ -1,0 +1,16 @@
+node_modules
+dist
+.DS_Store
+*.log
+.claude/
+
+# local databases and captured data (regenerate: npm run dev, then npm run seed:export)
+data/*.sqlite*
+data/tracker.db
+data/demo_seed.json
+data/inbox/*.eml
+
+# third-party text and personal review material: not redistributed in a public repo
+docs/screenshots/
+docs/review/*.csv
+docs/review/link_benchmark_v1/

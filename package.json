@@ -1,0 +1,52 @@
+{
+  "name": "traders-war-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Middle East energy/shipping tracker: Polymarket contracts + news/official feeds on one page.",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false server/index.ts",
+    "start": "vite build && NODE_ENV=production tsx server/index.ts",
+    "ingest": "tsx server/cli.ts ingest",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test server/*.test.ts",
+    "smoke:sources": "tsx scripts/smoke-sources.ts",
+    "seed:export": "tsx scripts/seed-export.ts",
+    "demo": "TRACKER_SEED=1 TRACKER_DB=data/seed.sqlite PORT=${PORT:-5174} tsx server/index.ts",
+    "replay": "tsx scripts/replay.ts",
+    "telegram:review": "tsx scripts/review-telegram.ts",
+    "reanalyze": "tsx scripts/reanalyze.ts",
+    "acceptance": "tsx scripts/acceptance.ts",
+    "check": "npm run typecheck && npm test && vite build"
+  },
+  "dependencies": {
+    "cytoscape": "^3.34.3",
+    "echarts": "^6.1.0",
+    "express": "^5.2.1",
+    "fast-xml-parser": "^5.11.2",
+    "leaflet": "^1.9.4",
+    "node-html-parser": "^9.0.4",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "topojson-client": "^3.1.0",
+    "world-atlas": "^2.0.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261009.1",
+    "@types/cytoscape": "^3.21.9",
+    "@types/express": "^5.0.6",
+    "@types/leaflet": "^1.9.22",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/topojson-client": "^3.1.5",
+    "@vitejs/plugin-react": "^6.1.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "wrangler": "^4.149.0"
+  }
+}

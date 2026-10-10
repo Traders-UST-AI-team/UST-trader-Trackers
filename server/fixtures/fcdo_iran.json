@@ -1,0 +1,54 @@
+{
+ "title": "Iran travel advice",
+ "base_path": "/foreign-travel-advice/iran",
+ "public_updated_at": "2026-08-13T16:37:44+01:00",
+ "updated_at": "2026-10-07T14:26:00+01:00",
+ "details": {
+  "alert_status": [
+   "avoid_all_travel_to_whole_country"
+  ],
+  "change_description": "Removal of information on temporary withdrawal of UK staff from Iran and the embassy operating remotely (\u2018Warnings and insurance\u2019 page). ",
+  "change_history": [
+   {
+    "note": "Removal of information on temporary withdrawal of UK staff from Iran and the embassy operating remotely (\u2018Warnings and insurance\u2019 page). ",
+    "public_timestamp": "2026-08-13T15:37:44Z"
+   },
+   {
+    "note": "Updated information on regional tensions, and due to the security situation, UK staff have been temporarily withdrawn from Iran. Our embassy continues to operate remotely (\u2018Warnings and insurance\u2019 page).",
+    "public_timestamp": "2026-07-22T18:36:21Z"
+   },
+   {
+    "note": "Updated information about regional tensions and conflict affecting Iran (\u2018Warnings and insurance\u2019 page).",
+    "public_timestamp": "2026-06-18T13:02:01Z"
+   },
+   {
+    "note": "Updated information about regional escalation (\u2018Warnings and insurance\u2019 page).\r\n\r\n",
+    "public_timestamp": "2026-04-07T16:53:02Z"
+   },
+   {
+    "note": "Updated information for British nationals in Iran (Warnings and Insurance page)",
+    "public_timestamp": "2026-03-01T17:27:32Z"
+   },
+   {
+    "note": "Updated information that Iranian airspace has now closed ('Warnings and insurance' page)",
+    "public_timestamp": "2026-02-28T11:29:37Z"
+   }
+  ],
+  "country": {
+   "name": "Iran",
+   "slug": "iran",
+   "synonyms": [
+    "Teheran",
+    "Teran",
+    "Terhan"
+   ]
+  },
+  "image": {
+   "content_type": "image/jpeg",
+   "url": "https://assets.publishing.service.gov.uk/media/627e359b8fa8f53f99901991/FCDO__TA__021_-_Iran_Travel_Advice_Ed5__WEB_.jpg"
+  },
+  "max_cache_time": 10,
+  "reviewed_at": "2026-08-13T15:37:44Z",
+  "updated_at": "2026-10-07T13:26:00Z"
+ }
+}

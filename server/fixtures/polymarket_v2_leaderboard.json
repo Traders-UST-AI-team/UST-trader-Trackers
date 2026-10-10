@@ -1,0 +1,91 @@
+{
+ "data": [
+  {
+   "rank": 1,
+   "user_id": "0xfe787d2da716d60e8acff57fb87eb13cd4d10319",
+   "pnl": 147419.6069760666,
+   "volume": 1095781.8357009997,
+   "user_name": "ferrariChampions2026",
+   "verified": false
+  },
+  {
+   "rank": 2,
+   "user_id": "0x3dfb153c197d4c19d3b31c1ecd2c7b6860eeabaf",
+   "pnl": 103709.39959112398,
+   "volume": 42627.986393,
+   "user_name": "0x3DFb153c197D4C19D3B31c1ecD2c7B6860eeabAf-1722957908185",
+   "verified": false
+  },
+  {
+   "rank": 3,
+   "user_id": "0x9b11866433281ade9f2811dbde8acdefc45f5375",
+   "pnl": 96370.10656163501,
+   "volume": 891242.7030930002,
+   "user_name": "0x9b11866433281ade9f2811dbde8acdefc45f5375",
+   "verified": false
+  },
+  {
+   "rank": 4,
+   "user_id": "0x9db82de5a71ae539bc82f4d9ac3a007c7d742eff",
+   "pnl": 92171.30983347,
+   "volume": 88677.349119,
+   "user_name": "sulumos",
+   "verified": false
+  },
+  {
+   "rank": 5,
+   "user_id": "0x8a8685a792c184e5c2ee8c7d4d4baba7c2c94998",
+   "pnl": 87447.81884680499,
+   "volume": 34488.635173,
+   "user_name": "BrotherObama",
+   "verified": false
+  },
+  {
+   "rank": 6,
+   "user_id": "0x9703676286b93c2eca71ca96e8757104519a69c2",
+   "pnl": 86937.15950737102,
+   "volume": 15316.280456,
+   "user_name": "AnonymousUsername",
+   "verified": false
+  },
+  {
+   "rank": 7,
+   "user_id": "0x076daa87c4fe1a85402a9b6b8e0a866224388d4c",
+   "pnl": 84426.42866877308,
+   "volume": 70285.02425800002,
+   "user_name": "omnibus-076daa",
+   "verified": false
+  },
+  {
+   "rank": 8,
+   "user_id": "0x918b42a06ff25eaaa4a79eca9da6a9de46f4ea63",
+   "pnl": 83792.21828429998,
+   "volume": 156.76923100000002,
+   "user_name": "OhWhenTheReds",
+   "verified": false
+  },
+  {
+   "rank": 9,
+   "user_id": "0xd38b71f3e8ed1af71983e5c309eac3dfa9b35029",
+   "pnl": 82471.28143135001,
+   "volume": 199131.67339299998,
+   "user_name": "primm",
+   "verified": false
+  },
+  {
+   "rank": 10,
+   "user_id": "0xde7be6d489bce070a959e0cb813128ae659b5f4b",
+   "pnl": 80874.27653760163,
+   "volume": 112272.857635,
+   "user_name": "wan123",
+   "verified": false
+  }
+ ],
+ "pagination": {
+  "limit": 10,
+  "offset": 0,
+  "has_more": true,
+  "next_cursor": "eyJkYXRhIjp7InR5cGUiOiJsZWFkZXJib2FyZCIsInBhcmFtcyI6eyJsIjoxMCwibyI6MTAsInMiOiJQTkwiLCJ0IjoiZGF5IiwiYyI6Im92ZXJhbGwifX0sInNpZyI6ImExM2ZhNzVkZTc3MmI2Y2VmODBiYjg4NjQ4MTMwMDA0In0"
+ },
+ "_fixture": "Real response from https://data-api.polymarket.com/v2 captured 2026-10-09; profile fields (bio, images, linked accounts) removed."
+}

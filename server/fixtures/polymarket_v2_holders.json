@@ -1,0 +1,221 @@
+{
+ "data": [
+  {
+   "token_id": "55115078421062885512539156303747803058407616201213034911037320915726138659123",
+   "holders": [
+    {
+     "proxy_wallet": "0x0a854897a06d4999e5b2dde5693609f1428ffe9d",
+     "token_id": "55115078421062885512539156303747803058407616201213034911037320915726138659123",
+     "pseudonym": "Murky-Sleepiness",
+     "amount": 1056378.989352,
+     "display_username_public": true,
+     "outcome_index": 0,
+     "name": "TheQuietRisk",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0x696de7b6e43f45378f60402b9fccff9c7484f89d",
+     "token_id": "55115078421062885512539156303747803058407616201213034911037320915726138659123",
+     "pseudonym": "Miniature-Parameter",
+     "amount": 1008150.737981,
+     "display_username_public": true,
+     "outcome_index": 0,
+     "name": "xm39",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0x8c80d213c0cbad777d06ee3f58f6ca4bc03102c3",
+     "token_id": "55115078421062885512539156303747803058407616201213034911037320915726138659123",
+     "pseudonym": "Wilted-Echidna",
+     "amount": 819220.767799,
+     "display_username_public": true,
+     "outcome_index": 0,
+     "name": "SecondWindCapital",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0x950ea3d54a52dca7ec54e7a0338812450268f8e5",
+     "token_id": "55115078421062885512539156303747803058407616201213034911037320915726138659123",
+     "pseudonym": "Kosher-Machinery",
+     "amount": 400000.026772,
+     "display_username_public": true,
+     "outcome_index": 0,
+     "name": "onepingonly",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0xe961babbccae0be01c2f6b5f28f8d002e332ef1b",
+     "token_id": "55115078421062885512539156303747803058407616201213034911037320915726138659123",
+     "pseudonym": "Sharp-Yurt",
+     "amount": 249494.829154,
+     "display_username_public": true,
+     "outcome_index": 0,
+     "name": "Kryptogram",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0x9592adb70397e9de67ba9abe6971e3f50fb7a7b8",
+     "token_id": "55115078421062885512539156303747803058407616201213034911037320915726138659123",
+     "pseudonym": "Immense-Patriot",
+     "amount": 218000.181323,
+     "display_username_public": true,
+     "outcome_index": 0,
+     "name": "meagainsttheworld",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0x93fb8127a1b21a112b11af936361225df0563e4a",
+     "token_id": "55115078421062885512539156303747803058407616201213034911037320915726138659123",
+     "pseudonym": "",
+     "amount": 200224.055581,
+     "display_username_public": true,
+     "outcome_index": 0,
+     "name": "LlamaLoco0000",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0x4b4bdc29a9ad4caedae5f1139ff8373dede0cbf7",
+     "token_id": "55115078421062885512539156303747803058407616201213034911037320915726138659123",
+     "pseudonym": "Abandoned-Clasp",
+     "amount": 172469.240586,
+     "display_username_public": true,
+     "outcome_index": 0,
+     "name": "DonaldPumpJr",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0x53e55bc7cb3d67ad177c023ce891ad076a9d6177",
+     "token_id": "55115078421062885512539156303747803058407616201213034911037320915726138659123",
+     "pseudonym": "Milky-Morbidity",
+     "amount": 155444.609139,
+     "display_username_public": true,
+     "outcome_index": 0,
+     "name": "Arbguy",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0x74471a007ddcc488f6d57b5e86dfb35a8d48a16d",
+     "token_id": "55115078421062885512539156303747803058407616201213034911037320915726138659123",
+     "pseudonym": "Bulky-Antler",
+     "amount": 144634.462423,
+     "display_username_public": true,
+     "outcome_index": 0,
+     "name": "tetrose",
+     "verified": false
+    }
+   ]
+  },
+  {
+   "token_id": "1910830010387565971650098373488592514702818137344973088263643820608151819241",
+   "holders": [
+    {
+     "proxy_wallet": "0x7f9e2d1df78614564a70becc7fa14aa9a6623a0e",
+     "token_id": "1910830010387565971650098373488592514702818137344973088263643820608151819241",
+     "pseudonym": "Dental-Liquid",
+     "amount": 569737.432878,
+     "display_username_public": true,
+     "outcome_index": 1,
+     "name": "LulaVaiPerder",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0xbaa2bcb5439e985ce4ccf815b4700027d1b92c73",
+     "token_id": "1910830010387565971650098373488592514702818137344973088263643820608151819241",
+     "pseudonym": "Illustrious-Spectacles",
+     "amount": 370469.804409,
+     "display_username_public": true,
+     "outcome_index": 1,
+     "name": "denizz",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0xc4d1a863e9cc45d02ba22d3a1ae9ba7822018ce8",
+     "token_id": "1910830010387565971650098373488592514702818137344973088263643820608151819241",
+     "pseudonym": "Unaware-Birdhouse",
+     "amount": 250000.033966,
+     "display_username_public": true,
+     "outcome_index": 1,
+     "name": "rdba",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0x2d99e29c4f066ba32098c65e4c7454b277d94ca3",
+     "token_id": "1910830010387565971650098373488592514702818137344973088263643820608151819241",
+     "pseudonym": "Damp-Accountant",
+     "amount": 240000.03666,
+     "display_username_public": true,
+     "outcome_index": 1,
+     "name": "scout",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0xe639e41094bbeae18f3e6d1790c17299183f082a",
+     "token_id": "1910830010387565971650098373488592514702818137344973088263643820608151819241",
+     "pseudonym": "Upright-Snug",
+     "amount": 186057.596197,
+     "display_username_public": true,
+     "outcome_index": 1,
+     "name": "0xe639e41094bbeae18g3e6d1790c17299183f082a",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0x5cd5c8d7a17c78d7389d8b87b611aed83322ac33",
+     "token_id": "1910830010387565971650098373488592514702818137344973088263643820608151819241",
+     "pseudonym": "Vengeful-Netsuke",
+     "amount": 184475.79087,
+     "display_username_public": true,
+     "outcome_index": 1,
+     "name": "nonkenny90",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0x8b4bca1d794779e66e023d44391b2a86c5ab541b",
+     "token_id": "1910830010387565971650098373488592514702818137344973088263643820608151819241",
+     "pseudonym": "Serene-Decision",
+     "amount": 162500.052264,
+     "display_username_public": true,
+     "outcome_index": 1,
+     "name": "0x8B4bcA1D794779E66e023D44391B2A86C5ab541B-1769764313952",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0xad96914d7762dac84ebbabafe366ae8ff24dd498",
+     "token_id": "1910830010387565971650098373488592514702818137344973088263643820608151819241",
+     "pseudonym": "Detailed-Poison",
+     "amount": 154695.505858,
+     "display_username_public": true,
+     "outcome_index": 1,
+     "name": "0xAD96914D7762DAC84EbBABAfE366AE8ff24Dd49",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0xab19716584931d81cd9e7763402673a64baa4876",
+     "token_id": "1910830010387565971650098373488592514702818137344973088263643820608151819241",
+     "pseudonym": "Fuzzy-Astrolabe",
+     "amount": 129599.987644,
+     "display_username_public": true,
+     "outcome_index": 1,
+     "name": "SlenderMan",
+     "verified": false
+    },
+    {
+     "proxy_wallet": "0xff1e352d5310eab17d1e9fd7e00ec33f16c05e2d",
+     "token_id": "1910830010387565971650098373488592514702818137344973088263643820608151819241",
+     "pseudonym": "Unripe-Whisker",
+     "amount": 125597.057251,
+     "display_username_public": true,
+     "outcome_index": 1,
+     "name": "0xff1e352d5310eab17d1e9fd7e00ec33f16c05e2",
+     "verified": false
+    }
+   ]
+  }
+ ],
+ "pagination": {
+  "limit": 10,
+  "offset": 0,
+  "has_more": true,
+  "next_cursor": "eyJkYXRhIjp7InR5cGUiOiJob2xkZXJzIiwicGFyYW1zIjp7ImwiOjEwLCJvIjoxMH19LCJzaWciOiIyZDM5YjQ4MjI4ODY4Mzk0ZjQ4MWQ0MDBhMWMwZDY5OSJ9"
+ },
+ "_fixture": "Real response from https://data-api.polymarket.com/v2 captured 2026-10-09; profile fields (bio, images, linked accounts) removed."
+}
