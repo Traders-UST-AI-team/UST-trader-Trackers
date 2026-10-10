@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { ChannelExposure, Product, SnifferDetectionResult } from '../../../shared/review-types';
-import { reviewsApi, type EdgarLookup } from '../../api-reviews';
+import { reviewsApi, type BestBuyProduct, type EdgarLookup } from '../../api-reviews';
 import { toast } from '../../toast';
 import { memberName } from './team';
 import { fiscalYearEndNote } from './metrics';
@@ -172,7 +172,88 @@ export function parseAsin(input: string): { asin: string | null; domain: string 
   return /^[A-Z0-9]{10}$/i.test(s) ? { asin: s.toUpperCase(), domain: null } : { asin: null, domain: null };
 }
 
-export function AddListingDialog({ ticker, onClose, onAdded }: { ticker: string; onClose: () => void; onAdded: (p: Product) => void }) {
+/**
+ * Finds a product's Best Buy SKU by name. Best Buy is the free review source: its reviews page
+ * back through a product's whole history, so the SKU is worth setting on every listing it sells.
+ */
+export function BestBuyPicker({ initialQuery, selected, onPick }: { initialQuery: string; selected: string; onPick: (sku: string) => void }) {
+  const [query, setQuery] = useState(initialQuery);
+  const [results, setResults] = useState<BestBuyProduct[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setQuery(initialQuery); }, [initialQuery]);
+  const search = async () => {
+    if (!query.trim()) return;
+    setBusy(true);
+    try {
+      setResults(await reviewsApi.bestBuySearch(query.trim()));
+    } catch (e) {
+      toast((e as Error).message, 'error');
+      setResults(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="rv-bbpicker">
+      <div className="rv-bbsearch">
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search Best Buy by product name" aria-label="Search Best Buy"
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void search(); } }} />
+        <button type="button" className="btn-secondary" onClick={() => void search()} disabled={busy || !query.trim()}>{busy ? 'Searching…' : 'Find on Best Buy'}</button>
+      </div>
+      {results && results.length === 0 && <p className="rv-muted rv-small">Best Buy has nothing matching. Try fewer words, or the model name.</p>}
+      {results && results.length > 0 && (
+        <ul className="rv-bbresults">
+          {results.map((p) => (
+            <li key={p.sku} className={selected === p.sku ? 'on' : ''}>
+              <button type="button" onClick={() => onPick(p.sku)}>
+                <b>{p.name}</b>
+                <span className="rv-muted rv-small">SKU {p.sku} · {p.review_count.toLocaleString('en-US')} reviews{p.manufacturer ? ` · ${p.manufacturer}` : ''}</span>
+              </button>
+              {p.url && <a className="rv-small" href={p.url} target="_blank" rel="noreferrer">view ↗</a>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** Sets or changes the Best Buy SKU of a listing already tracked. */
+export function BestBuySkuDialog({ product, bestBuyReady, onClose, onSaved }: { product: Product; bestBuyReady: boolean; onClose: () => void; onSaved: () => void }) {
+  const [sku, setSku] = useState(product.bestbuy_sku ?? '');
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      await reviewsApi.upsertProduct({
+        asin: product.asin, ticker: product.ticker, title: product.title, category: product.category ?? undefined,
+        bestbuy_sku: sku.trim() || undefined, amazon_domain: product.amazon_domain, collect_interval_hours: product.collect_interval_hours,
+      });
+      toast(sku.trim() ? `Best Buy SKU ${sku.trim()} set. The next collection backfills its review history.` : 'Best Buy SKU removed.', 'success');
+      onSaved();
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog title={`Best Buy listing for ${product.title}`} onClose={onClose} wide>
+      <div className="rv-form">
+        {bestBuyReady
+          ? <BestBuyPicker initialQuery={product.title} selected={sku} onPick={setSku} />
+          : <p className="rv-muted rv-small">Best Buy is not connected yet (BESTBUY_API_KEY), so the catalogue cannot be searched. A SKU entered here is used once it is.</p>}
+        <label className="rv-field">Best Buy SKU<input value={sku} onChange={(e) => setSku(e.target.value)} inputMode="numeric" placeholder="9226065" /></label>
+        <div className="rv-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn" disabled={busy || (sku.trim() !== '' && !/^\d{4,10}$/.test(sku.trim()))} onClick={() => void save()}>{busy ? 'Saving…' : 'Save'}</button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+export function AddListingDialog({ ticker, bestBuyReady, onClose, onAdded }: { ticker: string; bestBuyReady: boolean; onClose: () => void; onAdded: (p: Product) => void }) {
   const [source, setSource] = useState('');
   const [title, setTitle] = useState('');
   const [sku, setSku] = useState('');
@@ -205,8 +286,9 @@ export function AddListingDialog({ ticker, onClose, onAdded }: { ticker: string;
         {source && !parsed.asin && <p className="rv-error">No ASIN found. An ASIN is 10 letters or digits, e.g. B003NR57BY.</p>}
         {parsed.asin && <p className="rv-muted rv-small">ASIN <b>{parsed.asin}</b>{parsed.domain ? ` on ${parsed.domain}` : ' on amazon.com'}</p>}
         <label className="rv-field">Product name<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Logitech M510 Wireless Mouse" required maxLength={200} /></label>
+        {bestBuyReady && title.trim().length > 2 && <BestBuyPicker initialQuery={title} selected={sku} onPick={setSku} />}
         <div className="rv-grid2">
-          <label className="rv-field"><span>Best Buy SKU <span className="rv-muted">(optional)</span></span><input value={sku} onChange={(e) => setSku(e.target.value)} inputMode="numeric" placeholder="9226065" /></label>
+          <label className="rv-field"><span>Best Buy SKU <span className="rv-muted">{bestBuyReady ? '(free review history)' : '(optional)'}</span></span><input value={sku} onChange={(e) => setSku(e.target.value)} inputMode="numeric" placeholder="9226065" /></label>
           <label className="rv-field">Collect every
             <select value={collectEvery} onChange={(e) => setCollectEvery(Number(e.target.value))}>
               <option value={12}>12 hours</option><option value={24}>day</option><option value={72}>3 days</option><option value={168}>week</option>

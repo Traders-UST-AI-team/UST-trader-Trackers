@@ -4,7 +4,7 @@ import { listReviews } from './service.ts';
 import { sniffAndParseReviews } from './sniffer.ts';
 import { DEFAULT_CHAIN_BUDGET_MS, scoreReview, scorerReachability } from './jev.ts';
 import { ingestReviews, type Scorer } from './ingest.ts';
-import { fetchBestBuyReviews, fetchRedditCanaries, CanaryUnavailableError, type CanaryDeps } from './adapters.ts';
+import { fetchBestBuyReviews, fetchRedditCanaries, searchBestBuyProducts, CanaryUnavailableError, type CanaryDeps } from './adapters.ts';
 import { getDashboardSummary, toCompany, toProduct } from './service.ts';
 import { addCompany, collectProduct, connectorStatus, listRuns, setProductActive, syncFinancials, updateCompany, upsertProduct, watchlist, WatchlistError, type TrackerDeps } from './tracker.ts';
 import { lookupCompany } from './edgar.ts';
@@ -129,6 +129,19 @@ export function registerReviewRoutes(app: Express, store: DatabaseSync, deps: Re
       for (const row of rows) runs.push(...(await collectProduct(db, toProduct(row as any), { ...trackerDeps, trigger: 'manual' })));
       res.json({ runs });
     } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Best Buy catalogue search, to find a listing's SKU. A POST, so it needs the team code: every
+  // search spends the team's API quota.
+  app.post('/api/reviews/bestbuy/search', async (req: Request, res: Response) => {
+    const query = typeof req.body?.query === 'string' ? req.body.query.trim().slice(0, 120) : '';
+    if (!query) return res.status(400).json({ error: 'A search query is required.' });
+    try {
+      res.json(await searchBestBuyProducts(query, deps.canary ?? deps.tracker?.canary));
+    } catch (err) {
+      if (err instanceof CanaryUnavailableError) return res.status(503).json({ error: err.message });
       fail(res, err);
     }
   });

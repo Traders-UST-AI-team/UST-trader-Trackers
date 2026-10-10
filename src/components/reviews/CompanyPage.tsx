@@ -6,7 +6,7 @@ import { ago } from '../../format';
 import { toast } from '../../toast';
 import { ToneRevenueChart, ToneSignalChart } from './charts';
 import { ExposureBadge, HitRate, OutcomeBadge, SignalBadge } from './badges';
-import { AddListingDialog, ImportDialog } from './dialogs';
+import { AddListingDialog, BestBuySkuDialog, ImportDialog } from './dialogs';
 import { fiscalYearEndNote, formatDelta, formatMillions, formatPercent, formatTone, NO_VALUE, summariseProvenance } from './metrics';
 import { ReviewTable } from './ReviewTable';
 import { useCompany } from './useReviewWorkspace';
@@ -35,6 +35,8 @@ interface Props {
 export function CompanyPage({ ticker, asin, tab, version, canWrite, connectors, onBack, onScope, onTab, onChanged }: Props) {
   const { summary, runs, financials, listings, list, filters, setFilters } = useCompany(ticker, asin, version);
   const [dialog, setDialog] = useState<'listing' | 'import' | null>(null);
+  const [skuFor, setSkuFor] = useState<Product | null>(null);
+  const bestBuyReady = connectors?.find((c) => c.id === 'bestbuy')?.ready ?? false;
   const [busy, setBusy] = useState<'collect' | 'filings' | null>(null);
   const s = summary.data;
   const company = s?.company;
@@ -175,7 +177,7 @@ export function CompanyPage({ ticker, asin, tab, version, canWrite, connectors, 
                   failed={list.state === 'error'} filters={filters} setFilters={setFilters} canWrite={canWrite} onChanged={onChanged} />
               )}
               {tab === 'collection' && (
-                <CollectionPanel products={allProducts} connectors={connectors} runs={runs.data} canWrite={canWrite} onToggle={toggleListing}
+                <CollectionPanel products={allProducts} connectors={connectors} runs={runs.data} canWrite={canWrite} onToggle={toggleListing} onSetSku={setSkuFor}
                   exposure={company?.channel_exposure ?? 'medium'} onExposure={setExposure} />
               )}
             </>
@@ -183,7 +185,8 @@ export function CompanyPage({ ticker, asin, tab, version, canWrite, connectors, 
         </>
       )}
 
-      {dialog === 'listing' && <AddListingDialog ticker={ticker} onClose={() => setDialog(null)} onAdded={() => { setDialog(null); onChanged(); }} />}
+      {dialog === 'listing' && <AddListingDialog ticker={ticker} bestBuyReady={bestBuyReady} onClose={() => setDialog(null)} onAdded={() => { setDialog(null); onChanged(); }} />}
+      {skuFor && <BestBuySkuDialog product={skuFor} bestBuyReady={bestBuyReady} onClose={() => setSkuFor(null)} onSaved={() => { setSkuFor(null); onChanged(); }} />}
       {dialog === 'import' && <ImportDialog products={activeProducts} initialAsin={asin} onClose={() => setDialog(null)} onImported={() => { setDialog(null); onChanged(); }} />}
     </>
   );
@@ -257,12 +260,13 @@ function FinancialsTable({ rows }: { rows: import('../../../shared/review-types'
   );
 }
 
-function CollectionPanel({ products, connectors, runs, canWrite, onToggle, exposure, onExposure }: {
+function CollectionPanel({ products, connectors, runs, canWrite, onToggle, onSetSku, exposure, onExposure }: {
   products: Product[];
   connectors: ConnectorStatus[] | null;
   runs: import('../../../shared/review-types').CollectionRun[] | null;
   canWrite: boolean;
   onToggle: (p: Product) => void;
+  onSetSku: (p: Product) => void;
   exposure: ChannelExposure;
   onExposure: (e: ChannelExposure) => void;
 }) {
@@ -289,7 +293,8 @@ function CollectionPanel({ products, connectors, runs, canWrite, onToggle, expos
             <tbody>
               {products.map((p) => (
                 <tr key={p.asin} className={`static ${p.is_active ? '' : 'paused'}`}>
-                  <td><b>{p.title}</b><br /><a className="rv-small" href={`https://www.${p.amazon_domain ?? 'amazon.com'}/dp/${p.asin}`} target="_blank" rel="noreferrer">{p.asin} ↗</a>{p.bestbuy_sku ? <span className="rv-muted rv-small"> · Best Buy {p.bestbuy_sku}</span> : null}</td>
+                  <td><b>{p.title}</b><br /><a className="rv-small" href={`https://www.${p.amazon_domain ?? 'amazon.com'}/dp/${p.asin}`} target="_blank" rel="noreferrer">{p.asin} ↗</a>{p.bestbuy_sku ? <span className="rv-muted rv-small"> · Best Buy {p.bestbuy_sku}</span> : null}
+                    {canWrite && <> · <button className="rv-link rv-small" onClick={() => onSetSku(p)}>{p.bestbuy_sku ? 'change Best Buy SKU' : 'set Best Buy SKU'}</button></>}</td>
                   <td className="hide-sm">{(p.collect_interval_hours ?? 24) >= 168 ? 'week' : `${p.collect_interval_hours ?? 24} h`}</td>
                   <td className="rv-small">{p.last_collected_at ? ago(p.last_collected_at) : 'never'}</td>
                   <td className="hide-sm rv-muted rv-small">{p.added_by ?? '—'}</td>

@@ -148,6 +148,16 @@
 .rv-cols div { display: flex; flex-direction: column; } .rv-cols dt { font-size: 11px; color: var(--muted); } .rv-cols dd { margin: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 .rv-quote { margin: 0; padding: 6px 10px; border-left: 3px solid var(--border); background: var(--surface-2); font-size: 12.5px; border-radius: 0 6px 6px 0; }
 
+/* Best Buy SKU finder */
+.rv-bbpicker { display: flex; flex-direction: column; gap: 6px; }
+.rv-bbsearch { display: flex; gap: 6px; }
+.rv-bbsearch input { flex: 1; min-width: 0; border: 1px solid var(--border); background: var(--surface-2); border-radius: 6px; padding: 7px 9px; font-size: 13px; }
+.rv-bbresults { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; max-height: 220px; overflow: auto; }
+.rv-bbresults li { display: flex; align-items: center; gap: 8px; padding: 0 10px 0 0; border-bottom: 1px solid var(--grid); }
+.rv-bbresults li:last-child { border-bottom: 0; }
+.rv-bbresults li button { flex: 1; text-align: left; background: none; border: 0; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; cursor: pointer; font-size: 13px; }
+.rv-bbresults li:hover, .rv-bbresults li.on { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
 @media (max-width: 900px) {
   .rv-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

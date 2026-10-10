@@ -35,6 +35,14 @@ export interface EdgarLookup {
   sector: string | null;
 }
 
+export interface BestBuyProduct {
+  sku: string;
+  name: string;
+  manufacturer: string | null;
+  review_count: number;
+  url: string | null;
+}
+
 export interface ImportResult {
   success: boolean;
   imported: number;
@@ -77,6 +85,7 @@ export const reviewsApi = {
   financials: (ticker: string) => get<CompanyFinancial[]>(`/api/reviews/financials${qs({ ticker })}`),
   runs: (scope: { ticker?: string; asin?: string; limit?: number }) => get<CollectionRun[]>(`/api/reviews/runs${qs(scope)}`),
 
+  bestBuySearch: (query: string) => send<BestBuyProduct[]>('POST', '/api/reviews/bestbuy/search', { query }),
   collect: (scope: { ticker?: string; asin?: string }) => send<{ runs: CollectionRun[] }>('POST', '/api/reviews/collect', scope),
   sniff: (csv: string) => send<SnifferDetectionResult>('POST', '/api/reviews/sniff', { csv }),
   importReviews: (asin: string, reviews: SnifferDetectionResult['parsedReviews']) => send<ImportResult>('POST', '/api/reviews/import', { asin, reviews }),

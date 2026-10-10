@@ -6,7 +6,7 @@ import { closeReviewsStore, openReviewsStore } from './reviews/db.ts';
 import { seedReviewsDatabase } from './reviews/seed.ts';
 import { fiscalYearEndMonth, quarterlySeries, reportedQuarters, type XbrlFact } from './reviews/edgar.ts';
 import { amazonDate, amazonProvider, fetchAmazonReviews, normaliseAmazonReview } from './reviews/amazon.ts';
-import { CanaryUnavailableError } from './reviews/adapters.ts';
+import { CanaryUnavailableError, fetchBestBuyReviews, searchBestBuyProducts } from './reviews/adapters.ts';
 import { addCompany, collectProduct, dueProducts, listRuns, syncFinancials, upsertProduct, watchlist, WatchlistError } from './reviews/tracker.ts';
 import { backtestSummary, quarterToneSeries, swingOutcome, type ScoredReviewRow } from './reviews/policy.ts';
 import { classifyQuarter } from '../shared/review-signals.ts';
@@ -352,5 +352,87 @@ test('seed: the placeholder Nike ASIN is not tracked and SharkNinja carries its 
     assert.equal((store.prepare("SELECT cik FROM companies WHERE ticker = 'SN'").get() as { cik: string }).cik, '0001957132');
   } finally {
     closeReviewsStore(store);
+  }
+});
+
+// ── Best Buy (free source) ───────────────────────────────────────────────────────────────────────
+
+/** Answers Best Buy review pages from `pages` (page n → pages[n-1]) and records the pages asked. */
+function bestBuyPages(pages: Record<string, any>[][]) {
+  const asked: number[] = [];
+  const fetchImpl = (async (url: string) => {
+    const page = Number(/[?&]page=(\d+)/.exec(url)?.[1] ?? 1);
+    asked.push(page);
+    const body = { reviews: pages[page - 1] ?? [], totalPages: pages.length };
+    return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify(body) } as unknown as Response;
+  }) as unknown as typeof fetch;
+  return { fetchImpl, asked };
+}
+
+const bbReview = (id: number, date: string) => ({ id, comment: `Review ${id}`, rating: 4, submissionTime: `${date}T10:00:00`, reviewer: [{ name: `R${id}` }] });
+
+test('Best Buy: the first collection backfills history page by page; later runs read only the newest page', async () => {
+  const saved = process.env.BESTBUY_API_KEY;
+  process.env.BESTBUY_API_KEY = 'test-key';
+  const store = openReviewsStore(':memory:');
+  try {
+    seedReviewsDatabase(store);
+    const product = upsertProduct(store, { asin: 'B0TESTTEST', ticker: 'LOGI', title: 'Test mouse', bestbuy_sku: '1234567' });
+    const full = Array.from({ length: 100 }, (_, i) => bbReview(1000 + i, '2024-03-01'));
+    const t = bestBuyPages([full, full.map((r) => ({ ...r, id: r.id + 100 })), [bbReview(5000, '2023-01-01')]]);
+    const deps = { env: { BESTBUY_API_KEY: 'test-key' }, canary: { transport: { fetchImpl: t.fetchImpl } }, scorer: fixedScore };
+
+    const first = await collectProduct(store, product, { ...deps, trigger: 'manual' });
+    assert.deepEqual(t.asked, [1, 2, 3], 'pages until the history runs out');
+    assert.equal(first[0].stored, 201);
+    const author = (store.prepare("SELECT author FROM reviews_raw WHERE review_id = 'bestbuy_1000'").get() as { author: string }).author;
+    assert.equal(author, 'R1000', 'reviewer arrives as an array');
+
+    t.asked.length = 0;
+    await collectProduct(store, product, { ...deps, trigger: 'schedule' });
+    assert.deepEqual(t.asked, [1], 'after the backfill only the newest page is read');
+  } finally {
+    if (saved === undefined) delete process.env.BESTBUY_API_KEY; else process.env.BESTBUY_API_KEY = saved;
+    closeReviewsStore(store);
+  }
+});
+
+test('Best Buy: a product without a SKU is not connected — never someone else\'s SKU', async () => {
+  const saved = process.env.BESTBUY_API_KEY;
+  process.env.BESTBUY_API_KEY = 'test-key';
+  try {
+    const t = bestBuyPages([[bbReview(1, '2025-01-01')]]);
+    await assert.rejects(
+      () => fetchBestBuyReviews({ asin: 'B0TESTTEST', ticker: 'LOGI' }, { transport: { fetchImpl: t.fetchImpl } }),
+      (e: Error) => e instanceof CanaryUnavailableError && /no Best Buy SKU/.test(e.message),
+    );
+    assert.equal(t.asked.length, 0);
+  } finally {
+    if (saved === undefined) delete process.env.BESTBUY_API_KEY; else process.env.BESTBUY_API_KEY = saved;
+  }
+});
+
+test('Best Buy: catalogue search returns SKUs most-reviewed first, and a failure hides the key', async () => {
+  const saved = process.env.BESTBUY_API_KEY;
+  process.env.BESTBUY_API_KEY = 'secret-key';
+  try {
+    let asked = '';
+    const ok = (async (url: string) => {
+      asked = url;
+      const body = { products: [{ sku: 9226065, name: 'Logitech M510', manufacturer: 'Logitech', customerReviewCount: 5000, url: 'https://bestbuy.com/x' }] };
+      return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify(body) } as unknown as Response;
+    }) as unknown as typeof fetch;
+    const found = await searchBestBuyProducts('Logitech M510 Wireless!', { transport: { fetchImpl: ok } });
+    assert.deepEqual(found.map((p) => [p.sku, p.review_count]), [['9226065', 5000]]);
+    assert.match(asked, /products\(search=logitech&search=m510&search=wireless\)/);
+    assert.match(asked, /sort=customerReviewCount\.desc/);
+
+    const down = (async () => { throw new Error('connect ECONNREFUSED https://api.bestbuy.com/v1/products?apiKey=secret-key'); }) as unknown as typeof fetch;
+    await assert.rejects(
+      () => searchBestBuyProducts('mouse', { transport: { fetchImpl: down, retries: 0 } }),
+      (e: Error) => e instanceof CanaryUnavailableError && !e.message.includes('secret-key'),
+    );
+  } finally {
+    if (saved === undefined) delete process.env.BESTBUY_API_KEY; else process.env.BESTBUY_API_KEY = saved;
   }
 });

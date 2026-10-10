@@ -33,6 +33,11 @@ export interface TrackerDeps {
 
 /** Reviews read per listing per run. Newest first, so a daily run sees everything new. */
 export const MAX_REVIEWS_PER_RUN = 50;
+/**
+ * Best Buy pages a product's whole history. The first collection of a listing reads up to this many
+ * pages (100 reviews each) so its quarters have a baseline at once; later runs read the newest page.
+ */
+export const BESTBUY_BACKFILL_PAGES = 10;
 /** EDGAR is re-read this often per company; filings arrive quarterly. */
 export const FINANCIALS_REFRESH_HOURS = 24;
 
@@ -52,7 +57,9 @@ export function connectorStatus(env: Record<string, string | undefined> = proces
     },
     {
       id: 'bestbuy', label: 'Best Buy reviews', ready: Boolean(env.BESTBUY_API_KEY), scheduled: true,
-      detail: env.BESTBUY_API_KEY ? 'Best Buy developer API (products with a SKU)' : 'Not connected. Set BESTBUY_API_KEY.',
+      detail: env.BESTBUY_API_KEY
+        ? `Best Buy developer API, for products with a Best Buy SKU. The first run backfills up to ${BESTBUY_BACKFILL_PAGES * 100} past reviews.`
+        : 'Not connected. Set BESTBUY_API_KEY (free at developer.bestbuy.com).',
     },
     {
       id: 'reddit', label: 'Reddit (early canary)', ready: false, scheduled: false,
@@ -109,11 +116,15 @@ export function connectorsFor(product: Product, env: Record<string, string | und
   return out;
 }
 
-async function fetchFrom(connector: Connector, product: Product, deps: TrackerDeps): Promise<ReviewRaw[]> {
+async function fetchFrom(db: DatabaseSync, connector: Connector, product: Product, deps: TrackerDeps): Promise<ReviewRaw[]> {
   if (connector === 'amazon') {
     return fetchAmazonReviews({ asin: product.asin, ticker: product.ticker, domain: product.amazon_domain, max: MAX_REVIEWS_PER_RUN }, { env: deps.env, ...deps.amazon });
   }
-  return fetchBestBuyReviews({ asin: product.asin, ticker: product.ticker, bestbuy_sku: product.bestbuy_sku ?? undefined }, deps.canary);
+  const seen = db.prepare("SELECT 1 FROM reviews_raw WHERE asin = ? AND platform = 'bestbuy' AND provenance = 'captured' LIMIT 1").get(product.asin);
+  return fetchBestBuyReviews(
+    { asin: product.asin, ticker: product.ticker, bestbuy_sku: product.bestbuy_sku ?? undefined },
+    { ...deps.canary, pages: seen ? 1 : BESTBUY_BACKFILL_PAGES },
+  );
 }
 
 /**
@@ -141,7 +152,7 @@ export async function collectProduct(
     const id = startRun(db, { ticker: product.ticker, asin: product.asin, connector, trigger: opts.trigger }, now());
     runIds.push(id);
     try {
-      const fetched = await fetchFrom(connector, product, opts);
+      const fetched = await fetchFrom(db, connector, product, opts);
       const fresh = fetched.filter((r) => !known.get(r.review_id));
       const report = await ingestReviews(db, { asin: product.asin, ticker: product.ticker }, fresh, { scorer: opts.scorer });
       finishRun(db, id, {
