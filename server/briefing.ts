@@ -4,7 +4,7 @@
 import type { Express } from 'express';
 import { db, kvGet, kvSet } from './db.ts';
 import { registerJob } from './scheduler.ts';
-import { NEWS_SOURCES } from './registry.ts';
+import { SOURCE_META } from './registry.ts';
 import { originGroupOf } from './story.ts';
 import { marketIndicators, watchlistCards } from './indicators/service.ts';
 import { sourceHealth } from './sourcehealth.ts';
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS briefings (
 /** A contract is listed when its 24h change is at least this many percentage points, or its latest hourly move exceeds its own P95. */
 export const MOVE_PP = 5;
 const MAX_ITEMS_PER_STORY = 6, MAX_STORIES = 12, MAX_CONTRACTS_CHECKED = 60, MAX_CONTRACTS_LISTED = 12;
-const meta = new Map(NEWS_SOURCES.map((s) => [s.id, s]));
+const meta = SOURCE_META;
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const iso = (ms: number) => new Date(ms).toISOString();
 const sgn = (x: number) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(1)}`;

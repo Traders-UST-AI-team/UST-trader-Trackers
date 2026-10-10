@@ -7,16 +7,11 @@ import { existsSync, readFileSync } from 'node:fs';
 import { db, kvGet } from './db.ts';
 import { loadSeed } from './seed.ts';
 import { isRefreshing, lastRefreshFinishedAt, runIngest } from './ingest.ts';
-import { KALSHI_SOURCE, NEWS_SOURCES, POLYMARKET_SOURCE, SENSOR_SOURCES, TELEGRAM_SOURCE } from './registry.ts';
-import { storyFor } from './story.ts';
-import { linkAssets } from './assets.ts';
-import { getBreaker } from './breaker.ts';
+import { SOURCE_META } from './registry.ts';
 import { versions } from './versions.ts';
 import { sourceHealth } from './sourcehealth.ts';
 import { counterpartsFor } from './equivalence.ts';
 import { registerIndicatorRoutes } from './indicators/routes.ts';
-import { extractEventTime } from './eventtime.ts';
-import { isEnergyShippingFocus } from './geo.ts';
 import { readSensors } from './sources/sensors.ts';
 import { registerTelegramRoutes } from './telegram.ts';
 import { registerFeedRoutes } from './feed.ts';
@@ -31,14 +26,21 @@ import { evaluateAlerts, registerAlertRoutes } from './alerts.ts';
 import { registerResearchRoutes } from './research/routes.ts';
 import { registerBriefingRoutes, registerBriefingJob } from './briefing.ts';
 import { registerMaritimeRoutes } from './maritime/routes.ts';
-import { vesselTypeSummary } from './maritime/types.ts';
 import { checkRegistrySet } from './research/coverage.ts';
 import { afterCollection } from './research/hooks.ts';
 import { broadcastStreamEvent, registerStreamRoutes, closeAllStreamClients } from './stream.ts';
-import type { HistoryPoint, LinkedContract, Market, MarketHistory, SourceHealth, Status, Tier, TrackerEvent } from '../shared/types.ts';
+import { registerReviewRoutes, REVIEWS_JSON_LIMIT, REVIEWS_LARGE_BODY_PATHS } from './reviews/routes.ts';
+import { MARKET_SELECT, eventView, linksFor, marketView, type EventViewDeps } from './views.ts';
+import { closeReviewsStore, openReviewsStore } from './reviews/db.ts';
+import { seedReviewsDatabase } from './reviews/seed.ts';
+import { startReviewsScheduler } from './reviews/tracker.ts';
+import { registerTeamRoutes, teamWriteGuard } from './teamauth.ts';
+import type { HistoryPoint, LinkedContract, MarketHistory, Status } from '../shared/types.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT ?? 5173);
+// Loopback by default: a local install is not reachable from the network. A container sets HOST=0.0.0.0.
+const HOST = process.env.HOST ?? '127.0.0.1';
 const PROD = process.env.NODE_ENV === 'production';
 const SEED = !!process.env.TRACKER_SEED;
 if (SEED) {
@@ -49,64 +51,26 @@ const AUTO_REFRESH_MIN = 10;
 const STALE_AFTER_MIN = 5;
 
 const app = express();
+// The reviews importer posts whole CSV exports, which run to megabytes; the default 100 kb limit
+// would reject them before the route runs. Only those two endpoints get the larger limit (see
+// REVIEWS_JSON_LIMIT); a body they parse is marked as parsed, so the default parser skips it.
+// With TEAM_WRITE_TOKEN set, reads stay public and every write needs the team code. It runs before
+// any body is parsed, so an unauthorised upload is refused without being read.
+app.use(teamWriteGuard);
+app.use(REVIEWS_LARGE_BODY_PATHS, express.json({ limit: REVIEWS_JSON_LIMIT }));
 app.use(express.json());
+registerTeamRoutes(app);
 
 type Row = Record<string, any>;
-const parse = <T>(s: string | null | undefined, fb: T): T => { try { return s ? (JSON.parse(s) as T) : fb; } catch { return fb; } };
-const srcMeta = new Map(NEWS_SOURCES.map((s) => [s.id, s]));
-
-function toMarket(r: Row): Market {
-  const spread = r.best_bid != null && r.best_ask != null ? r.best_ask - r.best_bid : r.spread ?? null;
-  return {
-    is_open: Boolean(r.is_open), condition_id: r.condition_id, venue: r.venue, volume_unit: r.volume_unit, open_interest: r.open_interest, event_id: r.event_id, event_title: r.event_title, question: r.question, outcome_label: r.outcome_label,
-    price: r.price, quote_basis: r.quote_basis, best_bid: r.best_bid, best_ask: r.best_ask, spread, wide_spread: spread != null && spread > 0.1,
-    one_day_change: r.one_day_change, one_week_change: r.one_week_change, volume_total: r.volume_total, volume_24h: r.volume_24h, liquidity: r.liquidity,
-    end_date: r.end_date, start_date: r.start_date, provider_updated_at: r.provider_updated_at, observed_at: r.observed_at,
-    resolution_url: r.url ?? `https://polymarket.com/event/${r.event_slug}`, resolution_text: r.resolution_text, tags: parse<string[]>(r.tags, []),
-    history_points: r.history_points ?? 0,
-  };
-}
-
-const MARKET_SELECT = `SELECT m.*, (SELECT COUNT(*) FROM price_history h WHERE h.condition_id = m.condition_id) AS history_points FROM markets m`;
-
-function toEvent(r: Row, links: LinkedContract[]): TrackerEvent {
-  const meta = srcMeta.get(r.source_id);
-  const assets = linkAssets(`${r.title}. ${r.summary}`, r.location_name ? { name: r.location_name, lat: r.lat, lng: r.lng, precision: r.loc_precision } : null);
-  return {
-    focus_energy_shipping: isEnergyShippingFocus(parse<string[]>(r.topics, []), parse<string[]>(r.entities, []), assets.length > 0 || meta?.kind === 'maritime'),
-    event_time: r.time_precision === 'date' ? null : extractEventTime(`${r.title}. ${r.summary}`, r.published_at),
-    id: r.id, timestamp: r.published_at, collected_at: r.first_seen_at, source_id: r.source_id, source_name: r.publisher ? `${r.publisher} (via Google News)` : meta?.name ?? r.source_id,
-    originating_source: r.originating_source, source_affiliation: meta?.affiliation ?? '', source_scope: meta?.scope ?? null, modified_at: r.modified_at ?? null, revision_count: r.revision_count ?? 0, reliability_tier: ((r.tier as Tier | null) ?? meta?.tier ?? 'Tier-3') as Tier,
-    claim_status: 'reported', time_precision: r.time_precision ?? 'instant', publisher: r.publisher ?? null, title: r.title,
-    feed_key: `web:${r.source_id}:${r.external_id}`,
-    vessel_types: vesselTypeSummary(`${r.title}. ${r.summary}`),
-    publisher_time_note: r.publisher_time_raw ? `The feed states ${r.publisher_time_raw}, which is later than when this tracker first collected the item; it is placed at collection time. The feed's time-zone label is probably wrong; no offset is guessed.` : null,
-    location: r.location_name ? { name: r.location_name, lat: r.lat, lng: r.lng, precision: r.loc_precision } : null,
-    entities: parse<string[]>(r.entities, []), topics: parse<string[]>(r.topics, []), summary: r.summary, raw_url: r.raw_url,
-    language: r.language, relevant: !!r.relevant, linked_contracts: links, story: storyFor(r.id),
-    assets,
-  };
-}
-
-function linksFor(ids: string[]): Map<string, LinkedContract[]> {
-  const out = new Map<string, LinkedContract[]>();
-  if (!ids.length) return out;
-  const rows = db.prepare(`SELECT l.event_id, l.condition_id, l.score, l.matched_entities, l.matched_topics, m.question, m.price, m.venue
-    FROM event_market_links l JOIN markets m ON m.condition_id = l.condition_id AND m.is_open = 1
-    WHERE l.event_id IN (${ids.map(() => '?').join(',')}) ORDER BY l.score DESC, m.volume_24h DESC`).all(...ids) as Row[];
-  for (const r of rows) {
-    const a = out.get(r.event_id) ?? [];
-    a.push({ condition_id: r.condition_id, venue: r.venue, question: r.question, price: r.price, score: r.score, matched_entities: parse(r.matched_entities, []), matched_topics: parse(r.matched_topics, []) });
-    out.set(r.event_id, a);
-  }
-  return out;
-}
+const srcMeta = SOURCE_META;
+const eventDeps: EventViewDeps = { sourceMeta: srcMeta };
+const toEvent = (r: Row, links: LinkedContract[]) => eventView(r, links, eventDeps);
 
 app.get('/api/events', (req, res) => {
   const includeFiltered = req.query.include_filtered === '1';
   const limit = Math.min(Number(req.query.limit ?? 300), 1000);
   const rows = db.prepare(`SELECT * FROM events ${includeFiltered ? '' : 'WHERE relevant = 1'} ORDER BY published_at DESC LIMIT ?`).all(limit) as Row[];
-  const links = linksFor(rows.map((r) => r.id));
+  const links = linksFor(db, rows.map((r) => r.id));
   const heads = cachedHeadlines(db, rows as never);
   res.json(rows.map((r) => ({ ...toEvent(r, links.get(r.id) ?? []), title_en: heads.get(r.id) ?? null })));
 });
@@ -122,18 +86,18 @@ app.post('/api/events/:id/translation', async (req, res) => {
 app.get('/api/events/:id', (req, res) => {
   const row = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id) as Row | undefined;
   if (!row) return res.status(404).json({ error: 'This news item is no longer available in the tracker.' });
-  res.json({ ...toEvent(row, linksFor([row.id]).get(row.id) ?? []), title_en: cachedHeadlines(db, [row as never]).get(row.id) ?? null });
+  res.json({ ...toEvent(row, linksFor(db, [row.id]).get(row.id) ?? []), title_en: cachedHeadlines(db, [row as never]).get(row.id) ?? null });
 });
 
 app.get('/api/markets', (_req, res) => {
   const rows = db.prepare(`${MARKET_SELECT} WHERE m.is_open = 1 ORDER BY m.volume_24h DESC NULLS LAST`).all() as Row[];
-  res.json(rows.map(toMarket));
+  res.json(rows.map(marketView));
 });
 
 app.get('/api/markets/:id', (req, res) => {
   const row = db.prepare(`${MARKET_SELECT} WHERE m.condition_id = ?`).get(req.params.id) as Row | undefined;
   if (!row) return res.status(404).json({ error: 'Unknown contract' });
-  res.json(toMarket(row));
+  res.json(marketView(row));
 });
 
 app.get('/api/markets/:id/counterparts', (req, res) => res.json(counterpartsFor(req.params.id)));
@@ -174,6 +138,22 @@ registerBriefingRoutes(app, { seed: SEED });
 registerBriefingJob({ seed: SEED });
 registerMaritimeRoutes(app);
 registerStreamRoutes(app);
+
+// The reviews store is opened and its bundled dataset loaded here, explicitly, as one boot step.
+// The route module accepts the handle rather than creating it, and seeding only ever replaces rows
+// marked provenance='seed' — captured reviews and hand-imported CSVs are never touched.
+// Set REVIEWS_SEED=0 to open the store without loading the bundled dataset.
+const reviewsStore = openReviewsStore();
+const reviewsSeed = process.env.REVIEWS_SEED === '0' ? null : seedReviewsDatabase(reviewsStore);
+if (reviewsSeed) {
+  console.log(reviewsSeed.seeded
+    ? `[reviews] bundled dataset loaded: ${reviewsSeed.counts.seed_reviews} demo rows, ${reviewsSeed.counts.captured_reviews} captured rows kept`
+    : `[reviews] dataset up to date: ${reviewsSeed.counts.reviews} reviews (${reviewsSeed.counts.seed_reviews} demo, ${reviewsSeed.counts.captured_reviews} captured)`);
+}
+registerReviewRoutes(app, reviewsStore);
+// The watchlist keeps itself current: due listings are collected and filings re-read in the background.
+// REVIEWS_AUTO_COLLECT=0 turns that off (tests, or a deployment that should only show stored data).
+const stopReviewsScheduler = process.env.REVIEWS_AUTO_COLLECT === '0' ? () => {} : startReviewsScheduler(reviewsStore);
 checkRegistrySet();
 console.log(`[research] ${afterCollection('ingest')}`); // mirror provider end dates on start (local only)
 registerWalletJobs(() => {
@@ -233,7 +213,13 @@ function maybeRefresh(reason: string) {
       .catch((e) => console.error('[ingest] failed', e));
   }
 }
-app.use('/api/status', (_req, _res, next) => { maybeRefresh('page poll'); next(); });
+// The client's poll is what keeps a page fresh while it is open, but a GET must not collect:
+// `POST /api/keep-fresh` carries that intent explicitly and returns the same status payload, so the
+// poll costs one request and reading status can never start a collection cycle by accident.
+app.post('/api/keep-fresh', (_req, res) => {
+  maybeRefresh('page poll');
+  res.json({ ...status(), collection_paused: Boolean(process.env.TRACKER_NO_AUTO_REFRESH) });
+});
 setInterval(() => maybeRefresh('timer'), AUTO_REFRESH_MIN * 60_000).unref();
 
 if (PROD) {
@@ -247,10 +233,10 @@ if (PROD) {
 }
 
 // Release leases and close streaming clients on shutdown so a restarted server (e.g. `tsx watch`) does not wait for them to expire.
-for (const sig of ['SIGINT', 'SIGTERM'] as const) process.once(sig, () => { releaseAllLeases(); closeAllStreamClients(); process.exit(0); });
+for (const sig of ['SIGINT', 'SIGTERM'] as const) process.once(sig, () => { releaseAllLeases(); closeAllStreamClients(); stopReviewsScheduler(); closeReviewsStore(reviewsStore); process.exit(0); });
 
-app.listen(PORT, '127.0.0.1', () => {
-  console.log(`\n  War Tracker  →  http://localhost:${PORT}  (${PROD ? 'production' : 'dev'})\n`);
+app.listen(PORT, HOST, () => {
+  console.log(`\n  War Tracker  →  http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}  (${PROD ? 'production' : 'dev'})\n`);
   maybeRefresh('startup');
   if (!SEED && !process.env.TRACKER_NO_AUTO_REFRESH) startScheduler();
 });

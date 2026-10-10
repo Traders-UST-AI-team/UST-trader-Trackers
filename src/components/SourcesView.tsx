@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useResource } from '../read';
 import type { SourcesResponse, TgChannelView } from '../../shared/types';
 import { api } from '../api';
 import { absTime, ago } from '../format';
@@ -43,15 +44,13 @@ function ChannelRow({ c, now }: { c: TgChannelView; now: number }) {
 }
 
 export function SourcesView({ now, versionKey }: { now: number; versionKey: string }) {
-  const [d, setD] = useState<SourcesResponse | null>(null);
-  const [err, setErr] = useState<string | null>(null);
   const [chanDraft, setChanDraft] = useState<{ channel: string; enabled: boolean }[] | null>(null);
   const [newCh, setNewCh] = useState('');
   const [chErr, setChErr] = useState<string | null>(null);
-  const load = () => api.sources().then((x) => { setD(x); setErr(null); }).catch((e) => setErr((e as Error).message));
-  useEffect(() => { load(); }, [versionKey]);
-  useEffect(() => { const id = setInterval(load, 30_000); return () => clearInterval(id); }, []);
-  if (err) return <main className="sourcesview"><div className="banner">{err}</div></main>;
+  // One versioned read, with its own staleness rule and failure state; the poll just re-reads it.
+  const { data: d, error: err, reload: load } = useResource<SourcesResponse>(versionKey, () => api.sources(), { label: 'Sources' });
+  useEffect(() => { const id = setInterval(load, 30_000); return () => clearInterval(id); }, [load]);
+  if (err) return <main className="sourcesview"><div className="banner" role="alert">{err}</div></main>;
   if (!d) return <main className="sourcesview"><p className="muted">Loading sources…</p></main>;
   const ro = d.seed_mode;
   const chans = chanDraft ?? d.telegram.channels.map((c) => ({ channel: c.channel, enabled: c.enabled }));

@@ -4,13 +4,13 @@
 // Lag is descriptive and per cohort: instant-precision items collected by the newest poll only; date-only and backfilled items apart.
 import { db, kvGet, kvSet } from '../db.ts';
 import { sourceHealth } from '../sourcehealth.ts';
-import { NEWS_SOURCES } from '../registry.ts';
+import { NEWS_SOURCES, SOURCE_META } from '../registry.ts';
 import { channelConfig, collectionLag, openGaps } from '../sources/telegram.ts';
 import { recordSourceSetChange } from '../runlog.ts';
 import type { CoverageReport } from '../../shared/research.ts';
 
 type Row = Record<string, any>;
-const meta = new Map(NEWS_SOURCES.map((s) => [s.id, s]));
+const meta = SOURCE_META;
 const quant = (sorted: number[], p: number) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(p * (sorted.length - 1) + 0.5))] : null);
 
 /** On startup: if the configured source registry differs from the last recorded one, log the change (coverage comparisons). */

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useResource } from '../read';
 import type { AlertItem, AlertRuleView, AlertsResponse } from '../../shared/types';
 import { api } from '../api';
 import { absTime, ago } from '../format';
@@ -40,11 +41,9 @@ function AlertRow({ a, now, onAck, onOpen }: { a: AlertItem; now: number; onAck:
 }
 
 export function AlertsView({ now, versionKey, onOpenMarket }: { now: number; versionKey: string; onOpenMarket: (id: string) => void }) {
-  const [d, setD] = useState<AlertsResponse | null>(null);
   const [showAcked, setShowAcked] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  useEffect(() => { api.alerts().then((x) => { setD(x); setErr(null); }).catch((e) => setErr((e as Error).message)); }, [versionKey]);
-  if (err) return <main className="alertsview"><div className="banner">{err}</div></main>;
+  const { data: d, error: err, replace } = useResource<AlertsResponse>(versionKey, () => api.alerts(), { label: 'Alerts' });
+  if (err) return <main className="alertsview"><div className="banner" role="alert">{err}</div></main>;
   if (!d) return <main className="alertsview"><p className="muted">Loading alerts…</p></main>;
   const items = d.items.filter((a) => showAcked || !a.acked_at);
   return (
@@ -53,17 +52,17 @@ export function AlertsView({ now, versionKey, onOpenMarket }: { now: number; ver
       <div className="row2">
         <b>{d.unacked} unacknowledged</b>
         <label className="small"><input type="checkbox" checked={showAcked} onChange={(e) => setShowAcked(e.target.checked)} /> show acknowledged</label>
-        {d.unacked > 0 && <button className="linkbtn small grow" onClick={() => api.ackAllAlerts().then(setD)}>Acknowledge all</button>}
+        {d.unacked > 0 && <button className="linkbtn small grow" onClick={() => api.ackAllAlerts().then(replace)}>Acknowledge all</button>}
       </div>
       <div className="alertlist">
         {items.length === 0 && <p className="muted small">{d.enabled ? 'No alerts. Rules open an alert only on a change from normal to abnormal, so a quiet list is expected most of the time.' : 'Disabled in seed mode.'}</p>}
-        {items.map((a) => <AlertRow key={a.id} a={a} now={now} onAck={() => api.ackAlert(a.id).then(setD)} onOpen={a.target_kind === 'market' ? () => onOpenMarket(a.target_id) : undefined} />)}
+        {items.map((a) => <AlertRow key={a.id} a={a} now={now} onAck={() => api.ackAlert(a.id).then(replace)} onOpen={a.target_kind === 'market' ? () => onOpenMarket(a.target_id) : undefined} />)}
       </div>
       <section className="panel">
         <h3>Rules <span className="muted small">definition {d.definition_version}</span></h3>
         <div className="tablewrap"><table className="mini-table">
           <thead><tr><th>Rule</th><th>Fires</th><th>Threshold</th><th>Cooldown</th></tr></thead>
-          <tbody>{d.rules.map((r) => <RuleRow key={r.id} r={r} readOnly={d.seed_mode} onSaved={setD} />)}</tbody>
+          <tbody>{d.rules.map((r) => <RuleRow key={r.id} r={r} readOnly={d.seed_mode} onSaved={replace} />)}</tbody>
         </table></div>
       </section>
     </main>

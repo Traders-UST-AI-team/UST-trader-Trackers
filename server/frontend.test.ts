@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import { viewFromHash } from '../src/navigation.ts';
 import { escapeHtml } from '../src/html.ts';
 
-test('navigation restores valid views on reload and back/forward; invalid links fall back to dashboard', () => {
-  for (const view of ['dashboard', 'feed', 'telegram', 'research', 'wallets', 'alerts', 'sources']) assert.equal(viewFromHash(`#${view}`), view);
-  for (const invalid of ['', '#undefined', '#<script>', '#constructor']) assert.equal(viewFromHash(invalid), 'dashboard');
+test('navigation restores valid views on reload and back/forward; invalid links fall back to dashboard', async () => {
+  // Read the registry rather than restating the list: this test previously omitted two views the
+  // app offered, which is exactly the drift a duplicated list produces.
+  const { VIEW_IDS } = await import('../src/views.ts');
+  for (const view of VIEW_IDS) assert.equal(viewFromHash(`#${view}`), view);
+  for (const invalid of ['', '#undefined', '#<script>', '#constructor', '#not-a-view']) assert.equal(viewFromHash(invalid), 'dashboard');
 });
 test('provider and user text remains literal in chart HTML tooltips', () => {
   assert.equal(escapeHtml('<img src=x onerror="alert(1)"> & \'source\''), '&lt;img src=x onerror=&quot;alert(1)&quot;&gt; &amp; &#39;source&#39;');
@@ -221,4 +224,220 @@ test('formatHistoryCsv writes sub-plot series in their own units and leaves gaps
   assert.equal(rows[0], 'timestamp_iso,timestamp_unix,probability_pct,pane_rsi14_0_100');
   assert.equal(rows[1].endsWith(',50.00,'), true, 'warm-up is an empty cell, never 0');
   assert.equal(rows[2].endsWith(',52.00,61.23'), true);
+});
+
+// ── reviews workspace presentation rules ────────────────────────────────────────────────────────
+
+test('reviews metrics: an unknown value renders as unknown, never as a plausible number', async () => {
+  const m = await import('../src/components/reviews/metrics.ts');
+  assert.equal(m.NO_VALUE, '—');
+  assert.equal(m.formatTone(null), m.NO_VALUE);
+  assert.equal(m.formatTone(undefined), m.NO_VALUE);
+  assert.equal(m.formatTone(Number.NaN), m.NO_VALUE);
+  assert.equal(m.formatDelta(null), m.NO_VALUE);
+  assert.equal(m.formatCount(null), m.NO_VALUE);
+  assert.equal(m.formatPercent(null), m.NO_VALUE);
+  assert.equal(m.formatMillions(null), m.NO_VALUE);
+
+  assert.equal(m.formatTone(0.5), '0.500');
+  assert.equal(m.formatDelta(-0.214), '-0.214');
+  assert.equal(m.formatDelta(0.2), '+0.200');
+  assert.equal(m.formatCount(0), '0', 'a real zero is a value, not an absence');
+  assert.equal(m.formatMillions(123_000_000), '$123M');
+});
+
+test('reviews metrics: the headline never invents a quarter or a number', async () => {
+  const { headline } = await import('../src/components/reviews/metrics.ts');
+  assert.match(headline(null, null), /Loading/);
+  assert.match(headline({ latest_quarter: null }, 'Logitech'), /No stored reviews/);
+
+  const text = headline({ latest_quarter: { quarter_label: 'FY25 Q2', avg_tone: 0.667, baseline_tone: 0.881, delta_tone: -0.214, review_count: 6 } as never }, 'Logitech');
+  assert.match(text, /FY25 Q2/);
+  assert.match(text, /0\.667/);
+  assert.match(text, /-0\.214/);
+  assert.doesNotMatch(text, /FY27/, 'the old fallback quarter label must be gone');
+});
+
+test('reviews metrics: one classification for a quarter, and a failed quarter says nothing it cannot', async () => {
+  const { quarterAssessment } = await import('../src/components/reviews/metrics.ts');
+  const { SIGNALS } = await import('../shared/review-signals.ts');
+
+  // The server's flag wins when present.
+  assert.equal(quarterAssessment({ delta_tone: -0.9, review_count: 40, is_negative_swing: true }).signal, 'negative_swing');
+  assert.equal(quarterAssessment({ delta_tone: 0.3, review_count: 40, signal: 'positive' }).signal, 'positive');
+
+  // Without a flag, the shared thresholds decide — the same numbers the server uses.
+  assert.equal(quarterAssessment({ delta_tone: SIGNALS.negativeSwingDelta - 0.001, review_count: 40 }).signal, 'negative_swing');
+  assert.equal(quarterAssessment({ delta_tone: SIGNALS.negativeSwingDelta + 0.001, review_count: 40 }).signal, 'stable');
+  assert.equal(quarterAssessment({ delta_tone: 0.5, review_count: 40 }).label, 'Positive expansion');
+  assert.equal(quarterAssessment({ delta_tone: 0, review_count: 40 }).tone, 'flat');
+
+  // Sparse quarters are flagged from the shared threshold, not a literal.
+  assert.equal(quarterAssessment({ delta_tone: 0, review_count: SIGNALS.sparseReviewCount - 1 }).sparse, true);
+  assert.equal(quarterAssessment({ delta_tone: 0, review_count: SIGNALS.sparseReviewCount }).sparse, false);
+});
+
+test('reviews metrics: demo and sample rows are labelled wherever they count', async () => {
+  const { summariseProvenance } = await import('../src/components/reviews/metrics.ts');
+  const captured = { provenance: 'captured' } as never;
+
+  const allCaptured = summariseProvenance([captured, captured]);
+  assert.equal(allCaptured.label, null, 'pure evidence needs no disclaimer');
+  assert.equal(allCaptured.captured, 2);
+
+  const mixed = summariseProvenance([captured, { provenance: 'seed' } as never, { provenance: 'synthetic' } as never]);
+  assert.equal(mixed.seed, 1);
+  assert.equal(mixed.synthetic, 1);
+  assert.match(mixed.label!, /1 demo rows/);
+  assert.match(mixed.label!, /1 sample rows/);
+  assert.match(mixed.label!, /only captured rows are evidence/);
+});
+
+test('reviews metrics: fiscal quarters are described for every year-end month, not three of them', async () => {
+  const { fiscalYearEndNote } = await import('../src/components/reviews/metrics.ts');
+  assert.match(fiscalYearEndNote(3), /March/);
+  assert.match(fiscalYearEndNote(3), /Q1 Apr–Jun, Q2 Jul–Sep, Q3 Oct–Dec, Q4 Jan–Mar/);
+  assert.match(fiscalYearEndNote(12), /Q1 Jan–Mar, Q2 Apr–Jun/);
+  assert.match(fiscalYearEndNote(5), /Q1 Jun–Aug, Q2 Sep–Nov, Q3 Dec–Feb, Q4 Mar–May/);
+  // Helen of Troy ends in February, which the old three-branch version mislabelled as December.
+  assert.match(fiscalYearEndNote(2), /February/);
+  assert.match(fiscalYearEndNote(2), /Q1 Mar–May/);
+  assert.match(fiscalYearEndNote(null), /not loaded yet/);
+});
+
+test('versioned read: stale values survive a re-read, but never survive a failure', async () => {
+  const { initialRead, reduceRead } = await import('../src/read.ts');
+
+  const idle = initialRead<string[]>();
+  assert.deepEqual(idle, { data: null, state: 'idle', error: null });
+
+  const loaded = reduceRead(idle, { type: 'ready', value: ['a'] });
+  assert.deepEqual(loaded, { data: ['a'], state: 'ready', error: null });
+
+  // Stale-while-revalidate: a re-read keeps the previous value on screen.
+  const reloading = reduceRead(loaded, { type: 'start' });
+  assert.equal(reloading.state, 'loading');
+  assert.deepEqual(reloading.data, ['a']);
+
+  // A failure must not leave a value that looks current.
+  const failed = reduceRead(reloading, { type: 'fail', message: 'Coverage could not be loaded: HTTP 503' });
+  assert.equal(failed.state, 'error');
+  assert.equal(failed.data, null, 'a failed read must not keep presenting the old value as current');
+  assert.match(failed.error!, /HTTP 503/);
+
+  // Recovering clears the error and produces a real value again.
+  const recovered = reduceRead(failed, { type: 'ready', value: ['b'] });
+  assert.deepEqual(recovered, { data: ['b'], state: 'ready', error: null });
+
+  // An empty result is a value, not an absence.
+  const empty = reduceRead(idle, { type: 'ready', value: [] });
+  assert.deepEqual(empty.data, []);
+  assert.equal(empty.state, 'ready');
+});
+
+// ── view registry ───────────────────────────────────────────────────────────────────────────────
+
+test('view registry: one source of truth for id, label, key and workspace', async () => {
+  const { VIEWS, VIEW_IDS, WORKSPACES, isView, navItemsFor, workspaceOf, viewByKey, VIEW_KEY_MAP } = await import('../src/views.ts');
+
+  // Ids are unique and every id is a valid view.
+  assert.equal(new Set(VIEW_IDS).size, VIEW_IDS.length);
+  for (const id of VIEW_IDS) assert.equal(isView(id), true);
+  assert.equal(isView('nope'), false);
+
+  // Every view belongs to a declared workspace. A workspace with more than one view must offer
+  // nav for them; a single-view workspace (reviews) needs none, which is why the shell hides it.
+  const workspaceIds = WORKSPACES.map((w) => w.id);
+  for (const v of VIEWS) assert.ok(workspaceIds.includes(v.workspace), `${v.id} has an unknown workspace`);
+  for (const w of workspaceIds) {
+    const inWorkspace = VIEWS.filter((v) => v.workspace === w);
+    if (inWorkspace.length > 1) assert.ok(navItemsFor(w).length > 0, `workspace ${w} has several views but no nav`);
+    else assert.equal(navItemsFor(w).length, 0, `workspace ${w} has one view and should not need a nav`);
+  }
+
+  // Nav entries are the views that say they are in the nav, and they all read well.
+  for (const v of VIEWS) {
+    if (v.navLabel !== null) {
+      assert.ok(v.navLabel.length > 0);
+      assert.ok(v.title.length > 0, `${v.id} has no title for its nav button`);
+    }
+  }
+
+  // Keys are unique, resolve to their own view, and every view with a key is reachable by it.
+  const keys = VIEWS.filter((v) => v.key).map((v) => v.key!);
+  assert.equal(new Set(keys).size, keys.length, 'two views claim the same key');
+  for (const v of VIEWS) if (v.key) assert.equal(viewByKey(v.key), v.id);
+
+  // The map the shortcut handler uses agrees with the registry, aliases included.
+  for (const v of VIEWS) if (v.key) assert.equal(VIEW_KEY_MAP[v.key], v.id);
+  assert.equal(VIEW_KEY_MAP['6'], 'research');
+  assert.equal(VIEW_KEY_MAP['7'], 'sources');
+  assert.equal(Object.keys(VIEW_KEY_MAP).length, keys.length + 2);
+
+  // The sub-views that are only reachable from a nav entry still belong to a workspace.
+  assert.equal(workspaceOf('telegram'), 'dashboard');
+  assert.equal(workspaceOf('alerts'), 'dashboard');
+  assert.equal(workspaceOf('reviews'), 'reviews');
+});
+
+test('view registry: the shortcut table and the key map cannot disagree', async () => {
+  const { SHORTCUT_LIST } = await import('../src/shortcuts.ts');
+  const { VIEW_KEY_MAP, viewSpec } = await import('../src/views.ts');
+
+  const navShortcuts = SHORTCUT_LIST.filter((s) => s.category === 'Navigation');
+  const navKeys = navShortcuts.map((s) => s.key);
+
+  // Every key the handler can act on is documented for the operator.
+  for (const key of Object.keys(VIEW_KEY_MAP)) {
+    assert.ok(navKeys.includes(key), `key "${key}" opens a view but is not in the shortcut list`);
+  }
+
+  // And every documented navigation key is either a real view key or an alias.
+  for (const key of navKeys) {
+    if (key === 'b') continue; // opens the briefing, not a view
+    assert.ok(VIEW_KEY_MAP[key], `shortcut "${key}" is documented but opens nothing`);
+  }
+
+  // The label the operator sees names the destination they actually land on.
+  for (const shortcut of navShortcuts) {
+    const target = VIEW_KEY_MAP[shortcut.key];
+    if (!target) continue;
+    assert.ok(shortcut.description.length > 0, `shortcut ${shortcut.key} has no description`);
+    assert.ok(viewSpec(target).title.length > 0);
+  }
+});
+
+test('client transport: one error mode for every resource', async () => {
+  const { createServer } = await import('node:http');
+  const { get, send } = await import('../src/http.ts');
+
+  const server = createServer((req, res) => {
+    const json = (code: number, body: string) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(body); };
+    if (req.url === '/ok') return json(200, '{"value":7}');
+    if (req.url === '/json-error') return json(503, '{"error":"provider blocked"}');
+    if (req.url === '/no-message') return json(500, '{}');
+    res.writeHead(404, { 'content-type': 'text/html' });
+    res.end('<html>not json</html>');
+  });
+  await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
+  const port = (server.address() as { port: number }).port;
+  const base = `http://127.0.0.1:${port}`;
+
+  try {
+    assert.deepEqual(await get(`${base}/ok`), { value: 7 });
+    assert.deepEqual(await send('POST', `${base}/ok`, { anything: true }), { value: 7 });
+
+    // The server's own message wins when it sent one — whichever resource asked.
+    await assert.rejects(() => get(`${base}/json-error`), (e: Error) => e.message === 'provider blocked');
+    await assert.rejects(() => send('PUT', `${base}/json-error`, {}), (e: Error) => e.message === 'provider blocked');
+
+    // Without a message, the status is reported rather than a parse failure.
+    await assert.rejects(() => get(`${base}/no-message`), (e: Error) => e.message === `${base}/no-message → HTTP 500`);
+
+    // A non-JSON error body must not turn into a confusing JSON parse error.
+    await assert.rejects(() => get(`${base}/html`), (e: Error) => e.message === `${base}/html → HTTP 404`);
+  } finally {
+    server.closeAllConnections();
+    server.close();
+  }
 });

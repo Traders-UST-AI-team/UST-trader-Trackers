@@ -1,10 +1,11 @@
 import { ActionButton } from '../ActionButton';
 import { useDraft } from '../../workspace';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { CalendarEntryView } from '../../../shared/research';
 import { api } from '../../api';
 import { absTime } from '../../format';
 import { ErrorChip, attempt } from './common';
+import { useResource } from '../../read';
 
 const ZONE = 'Asia/Hong_Kong';
 const when = (e: CalendarEntryView) => (e.start_utc
@@ -28,9 +29,9 @@ function CalendarEdit({ entry, onChanged }: { entry: CalendarEntryView; onChange
 }
 
 export function Upcoming({ versionKey, onOpenMarket }: { versionKey: string; onOpenMarket: (id: string) => void }) {
-  const [d, setD] = useState<{ entries: CalendarEntryView[]; note: string } | null>(null);
   const [f, setF] = useDraft('new-calendar-entry', { title: '', date: '', time: '', tz: ZONE, source_url: '', notes: '' });
-  const [err, setErr] = useState<string | null>(null);
+  // A write failing and a read failing are different events; they used to share one variable.
+  const [writeErr, setWriteErr] = useState<string | null>(null);
   const [q, setQ] = useDraft('calendar-search', '');
   const [kind, setKind] = useDraft('calendar-kind', 'all');
   const [status, setStatus] = useDraft('calendar-status', 'all');
@@ -119,28 +120,22 @@ export function Upcoming({ versionKey, onOpenMarket }: { versionKey: string; onO
     return null;
   }, [from, to, viewMode, curYear, curMonth]);
 
-  const generation = useRef(0);
-  const load = () => {
-    const request = ++generation.current;
-    const fetchPromise = queryWindow ? api.calendar(queryWindow.from, queryWindow.to) : api.calendar();
-    return fetchPromise
-      .then((result) => {
-        if (request === generation.current) {
-          setD(result);
-          setErr(null);
-        }
-      })
-      .catch((e) => {
-        if (request === generation.current) setErr(e.message);
-      });
-  };
+
+  // One versioned read: the calendar window is part of the key, so a new window re-reads and a
+  // slow response for an old window cannot commit.
+  const { data: d, error: readErr, reload: load } = useResource(
+    [versionKey, queryWindow?.from ?? null, queryWindow?.to ?? null],
+    () => (queryWindow ? api.calendar(queryWindow.from, queryWindow.to) : api.calendar()),
+    { label: 'Calendar' },
+  );
+  const err = readErr ?? writeErr;
 
   const shown = useMemo(() => d?.entries.filter((e) => {
     const date = dateOf(e);
     return e.title.toLowerCase().includes(q.toLowerCase()) && (kind === 'all' || e.kind === kind) && (status === 'all' || e.status === status) && (!from || date >= from) && (!to || date <= to);
   }) ?? [], [d, q, kind, status, from, to]);
 
-  useEffect(() => { load(); }, [versionKey, queryWindow]);
+
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
 
   const entriesByDate = useMemo(() => {
@@ -238,7 +233,7 @@ export function Upcoming({ versionKey, onOpenMarket }: { versionKey: string; onO
           <input type="time" value={f.time} onChange={set('time')} aria-label="Time (optional)" />
           <input placeholder="IANA zone" value={f.tz} onChange={set('tz')} aria-label="Time zone" />
           <input placeholder="source URL (required)" value={f.source_url} onChange={set('source_url')} />
-          <ActionButton disabled={!f.title.trim() || !f.date || !f.tz.trim() || !f.source_url.trim()} onClick={() => attempt(() => api.createCalendarEntry({ ...f, time: f.time || null }), setErr).then((r) => { if (r) { setF({ ...f, title: '', date: '', time: '', source_url: '' }); load(); } })}>Add</ActionButton>
+          <ActionButton disabled={!f.title.trim() || !f.date || !f.tz.trim() || !f.source_url.trim()} onClick={() => attempt(() => api.createCalendarEntry({ ...f, time: f.time || null }), setWriteErr).then((r) => { if (r) { setF({ ...f, title: '', date: '', time: '', source_url: '' }); load(); } })}>Add</ActionButton>
         </div>
         <ErrorChip e={err} />
       </details>

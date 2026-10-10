@@ -14,3 +14,7 @@ data/inbox/*.eml
 docs/screenshots/
 docs/review/*.csv
 docs/review/link_benchmark_v1/
+
+# deployment secrets (team code etc.)
+.env
+.env.*

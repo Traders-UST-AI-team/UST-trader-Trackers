@@ -235,3 +235,26 @@ test('prefs: panes are optional, limited to rsi14/macd, unique; bollinger is a v
   assert.deepEqual(svc.sanitizePrefs({ ...base, panes: ['rsi14', 'macd'] })?.panes, ['rsi14', 'macd']);
   for (const bad of [['atr14'], ['rsi14', 'rsi14'], 'rsi14', ['rsi14', 'macd', 'rsi14']]) assert.equal(svc.sanitizePrefs({ ...base, panes: bad }), null);
 });
+
+test('computation takes its inputs: an indicator is computed from a plain sample array', () => {
+  // No market row, no history table, no HTTP: the computation is reachable with the data it needs.
+  const raw = Array.from({ length: 30 }, (_, i) => ({ t: T0 + i * H, v: 0.5 }));
+  const input = {
+    id: 'synthetic', venue: 'polymarket', question: 'Synthetic', basis: 'polymarket:test', basisKey: 'test',
+    fidelity: 60, raw, version: 'v-synthetic', spread: null, liquidity: null, price: 0.5,
+    quote_basis: null, observed_at: new Date(T0 * 1000).toISOString(), history_fetched_at: null,
+  };
+  const parsed = svc.parseIds(['sma10'], 'market');
+  assert.deepEqual(parsed.bad, []);
+
+  const out = svc.computeMarketOne(input, parsed.ok[0], T0 + 29 * H);
+  assert.equal(out.status, 'ok');
+  assert.equal(out.latest?.value, 50, 'a flat 0.5 series has a 50 % moving average');
+  assert.equal(out.definition_version, svc.REGISTRY_VERSION);
+  assert.equal(out.input_version, 'v-synthetic');
+
+  // The same input and as-of give the same answer; a different as-of is a different computation and
+  // is not answered from the cache of another one.
+  assert.deepEqual(svc.computeMarketOne(input, parsed.ok[0], T0 + 29 * H), out);
+  assert.notEqual(svc.computeMarketOne(input, parsed.ok[0], T0 + 20 * H).latest?.value, undefined);
+});

@@ -4,41 +4,46 @@
 import { createHash } from 'node:crypto';
 import { db, kvGet, kvSet } from './db.ts';
 import { recordSourceSetChange } from './runlog.ts';
-import { KALSHI_SOURCE, NEWS_SOURCES, POLYMARKET_SOURCE, SENSOR_SOURCES, TELEGRAM_SOURCE, WALLET_SOURCES } from './registry.ts';
+import { ALL_SOURCES, type FreshnessPolicy, type NewestQuery, type SourceBounds } from './registry.ts';
 import type { SourceHealth } from '../shared/types.ts';
 
-export interface SourceDef { id: string; name: string; kind: SourceHealth['kind']; intervalMin: number; disabled?: string }
+export interface SourceDef {
+  id: string; name: string; kind: SourceHealth['kind']; intervalMin: number;
+  /** Reason this source cannot be collected, or undefined when it can. */
+  disabled?: string;
+  /** Carried through from the registry entry so health does not re-derive it. */
+  sporadic?: boolean;
+  freshness?: FreshnessPolicy;
+  newest?: NewestQuery;
+  /** Carried from the registry entry; the default applies to a single-feed source. */
+  bounds?: SourceBounds;
+}
 
 export function allSourceDefs(): SourceDef[] {
-  return [
-    { id: POLYMARKET_SOURCE.id, name: POLYMARKET_SOURCE.name, kind: 'prediction_market', intervalMin: POLYMARKET_SOURCE.intervalMin },
-    { id: KALSHI_SOURCE.id, name: KALSHI_SOURCE.name, kind: 'prediction_market', intervalMin: KALSHI_SOURCE.intervalMin },
-    { id: TELEGRAM_SOURCE.id, name: TELEGRAM_SOURCE.name, kind: TELEGRAM_SOURCE.kind, intervalMin: TELEGRAM_SOURCE.intervalMin },
-    ...SENSOR_SOURCES.map((s) => ({ id: s.id, name: s.name, kind: s.kind, intervalMin: s.intervalMin })),
-    ...WALLET_SOURCES.map((s) => ({ id: s.id, name: s.name, kind: s.kind, intervalMin: s.intervalMin })),
-    ...NEWS_SOURCES.map((s) => ({ id: s.id, name: s.name, kind: s.kind, intervalMin: s.intervalMin, disabled: s.enabled === false ? s.blockedReason : undefined })),
-  ];
+  return ALL_SOURCES.map((s) => ({
+    id: s.id,
+    name: s.name,
+    kind: s.kind as SourceHealth['kind'],
+    intervalMin: s.intervalMin,
+    // A source is shown as "not connected" when the registry marks it inaccessible.
+    disabled: s.enabled === false ? s.blockedReason : undefined,
+    sporadic: s.sporadic,
+    freshness: s.freshness,
+    newest: s.newest,
+    bounds: s.bounds,
+  }));
 }
 
 export interface Bounds { interval: [number, number]; budget: [number, number]; budgetDefault: number; budgetUnit: string }
-/** Floors/ceilings per source. Budgets were set at roughly 2× the requests measured in real runs (see the implementation report). */
-export function boundsOf(d: SourceDef): Bounds {
-  if (d.id === 'telegram') return { interval: [5, 240], budget: [1, 30], budgetDefault: 8, budgetUnit: 'preview pages per channel per run' };
-  // Wallet pilot: far below the published v2 limits (trades 300 / positions & activity 200 per 10 s); pilot cadences per plan §9.
-  if (d.id === 'pm-trades') return { interval: [1, 60], budget: [5, 100], budgetDefault: 30, budgetUnit: 'HTTP requests per run' };
-  if (d.id === 'pm-wallets') return { interval: [10, 240], budget: [5, 120], budgetDefault: 60, budgetUnit: 'HTTP requests per run' };
-  if (d.id === 'pm-holders') return { interval: [30, 1440], budget: [2, 40], budgetDefault: 12, budgetUnit: 'HTTP requests per run' };
-  if (d.id === 'pm-leaderboard') return { interval: [360, 10080], budget: [1, 10], budgetDefault: 4, budgetUnit: 'HTTP requests per run' };
-  if (d.id === 'polymarket') return { interval: [5, 240], budget: [20, 600], budgetDefault: 250, budgetUnit: 'HTTP requests per run' };
-  if (d.id === 'kalshi') return { interval: [5, 240], budget: [20, 600], budgetDefault: 250, budgetUnit: 'HTTP requests per run' };
-  if (d.id === 'portwatch' || d.id === 'fred') return { interval: [60, 1440], budget: [5, 100], budgetDefault: 40, budgetUnit: 'HTTP requests per run' };
-  if (d.id === 'opensky') return { interval: [10, 1440], budget: [2, 50], budgetDefault: 12, budgetUnit: 'HTTP requests per run' };
-  if (d.id === 'ioda') return { interval: [15, 1440], budget: [2, 80], budgetDefault: 30, budgetUnit: 'HTTP requests per run' };
-  // Multi-page adapters, sized from measured runs (2 attempts per page): FCDO 14 country pages; Maersk listing + articles; EASA list + details.
-  if (d.id === 'fcdo') return { interval: [5, 1440], budget: [14, 60], budgetDefault: 32, budgetUnit: 'HTTP requests per run' };
-  if (d.id === 'maersk-advisories' || d.id === 'easa-czib') return { interval: [5, 1440], budget: [2, 60], budgetDefault: 25, budgetUnit: 'HTTP requests per run' };
-  return { interval: [5, 1440], budget: [1, 60], budgetDefault: 12, budgetUnit: 'HTTP requests per run' };
-}
+/**
+ * The bounds a source declares on its own registry entry.
+ *
+ * A source that states none gets the single-feed default, so "unbounded" is not reachable by
+ * omission, and a source's full description lives in one place rather than two.
+ */
+const DEFAULT_BOUNDS: Bounds = { interval: [5, 1440], budget: [1, 60], budgetDefault: 12, budgetUnit: 'HTTP requests per run' };
+
+export const boundsOf = (d: SourceDef): Bounds => d.bounds ?? DEFAULT_BOUNDS;
 
 export interface EffectiveConfig {
   source_id: string; interval_min: number; request_budget: number; default_interval_min: number; default_budget: number;

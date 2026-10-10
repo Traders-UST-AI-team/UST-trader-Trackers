@@ -1,82 +1,32 @@
 // Indicator service: reads STORED data only (never triggers ingestion), computes with shared/indicators.ts, caches results.
 // Registered indicators with bounded parameters only — no arbitrary expressions, scripts or Pine.
 import { db, kvGet, kvSet } from '../db.ts';
+import { NEWS_SOURCES } from '../registry.ts';
+
+/** Official sources that are actually connected, by registry kind rather than by a copied id list. */
+const OFFICIAL_SOURCE_IDS = new Set(NEWS_SOURCES.filter((s) => s.kind === 'official' && s.enabled !== false).map((s) => s.id));
 import * as I from '../../shared/indicators.ts';
 import type { Coverage, IndicatorResult, IndPoint, IndStatus, Sample } from '../../shared/indicators.ts';
 import { SENSORS } from '../sources/sensors.ts';
+import { DEFS, MARKET_DEFAULTS, parseIds, REGISTRY_VERSION, type ParsedId } from './registry.ts';
+import {
+  cacheStats, clearCache, computeMarketOne, computeSensorOne, defaultSensorIds, iso,
+  marketIndicatorsFromInput, sensorIndicatorsFromInput,
+  type ComputeOpts, type IndicatorResponse, type MarketInput, type SensorInput,
+} from './compute.ts';
+export { clearCache, cacheStats, computeMarketOne, computeSensorOne, defaultSensorIds, marketIndicatorsFromInput, sensorIndicatorsFromInput } from './compute.ts';
+export type { ComputeOpts, IndicatorResponse, MarketInput, SensorInput } from './compute.ts';
+
+// Re-exported so existing importers keep one import site while the vocabulary moves out of the
+// store-coupled module.
+export { DEFS, MARKET_DEFAULTS, parseIds, REGISTRY_VERSION, registryEntries } from './registry.ts';
+export type { IndicatorDef, ParsedId } from './registry.ts';
 import type { Prefs, ReactionResult, WatchCard, WatchItem } from '../../shared/types.ts';
 export type { Prefs, WatchCard, WatchItem } from '../../shared/types.ts';
 
-export const REGISTRY_VERSION = I.DEFINITION_VERSION;
-
 // ───────────────────────────── registry ─────────────────────────────
 
-export interface IndicatorDef {
-  id: string; title: string; kind: 'market' | 'sensor'; family: 'change' | 'ma' | 'movement' | 'baseline' | 'published' | 'observed' | 'technical';
-  unit: string; timeframe: string; overlay: boolean; description: string; params?: Record<string, { min: number; max: number; default: number }>;
-}
-
-export const DEFS: IndicatorDef[] = [
-  { id: 'change_1h', title: '1h change', kind: 'market', family: 'change', unit: 'pp', timeframe: '1h', overlay: false, description: '100 × (latest − reference) within one provider history series; reference = closest point at or before latest − 1h and within 15 min of that target. Null (never 0) when the latest point is >2 h old or no reference qualifies.' },
-  { id: 'change_24h', title: '24h change', kind: 'market', family: 'change', unit: 'pp', timeframe: '24h', overlay: false, description: 'As 1h change with a 24h window and a 2 h reference tolerance.' },
-  { id: 'sma', title: 'Simple moving average (hourly)', kind: 'market', family: 'ma', unit: '%', timeframe: 'N × 1h', overlay: true, params: { n: { min: 2, max: 200, default: 24 } }, description: 'Mean of N consecutive final-sample-per-completed-UTC-hour values; null until a full window; warm-up restarts after a gap > 90 min.' },
-  { id: 'ema', title: 'Exponential moving average (hourly)', kind: 'market', family: 'ma', unit: '%', timeframe: 'N × 1h', overlay: true, params: { n: { min: 2, max: 200, default: 24 } }, description: 'alpha = 2/(N+1), seeded with the first complete N-point SMA, then recursive; restarts after a gap.' },
-  { id: 'rsi14', title: 'RSI 14 (hourly, optional sub-plot)', kind: 'market', family: 'technical', unit: '0–100', timeframe: '14 × 1h', overlay: false, description: 'Wilder smoothing: first value from 14 differences (15 points), then avg = (prev×13 + current)/14. 50 when both averages are 0, 100 when only the loss is 0, 0 when only the gain is 0. 30/70 are descriptive reference lines. Describes the sampled series; not a signal.' },
-  { id: 'macd', title: 'MACD 12/26/9 (hourly, optional sub-plot)', kind: 'market', family: 'technical', unit: 'pp', timeframe: '12/26/9 × 1h', overlay: false, description: 'EMA12 − EMA26 (SMA-seeded); signal = EMA9 of MACD seeded with the first nine MACD values; histogram = MACD − signal. Complete only after 34 consecutive hourly points. Output in percentage points.' },
-  { id: 'bollinger', title: 'Bollinger 20, 2 (hourly, optional overlay)', kind: 'market', family: 'technical', unit: '%', timeframe: '20 × 1h', overlay: true, description: 'SMA20 ± 2 × population standard deviation (denominator 20). Raw bands may cross 0–100 % and are not clipped; excursions are counted. Not confidence intervals.' },
-  { id: 'hourly_movement', title: 'Hourly movement vs history', kind: 'market', family: 'movement', unit: 'pp', timeframe: '1h', overlay: false, description: 'Latest adjacent-hour absolute change vs median and P95 (type-7 quantiles) of up to 168 PRIOR adjacent-hour pairs; ≥48 required. Describes historical unusualness only.' },
-  { id: 'baseline_28d', title: 'Change vs trailing 28-day mean', kind: 'sensor', family: 'baseline', unit: 'series unit', timeframe: 'daily', overlay: false, description: 'Latest daily value vs the mean of the preceding 28 calendar days (current excluded; ≥24 valid days). Percentage unavailable when the baseline is 0.' },
-  { id: 'published_change', title: 'Change vs previous published observation', kind: 'sensor', family: 'published', unit: 'series unit', timeframe: 'per observation', overlay: false, description: 'Absolute and percentage change vs the preceding actual observation; no weekend/holiday zeros.' },
-  { id: 'sma_published', title: 'SMA over published observations', kind: 'sensor', family: 'published', unit: 'series unit', timeframe: 'N observations', overlay: true, params: { n: { min: 2, max: 60, default: 7 } }, description: 'Mean of N consecutive published observations; interruptions > 7 days reset warm-up.' },
-  { id: 'observed_change', title: 'Latest value and observed change', kind: 'sensor', family: 'observed', unit: 'series unit', timeframe: 'as observed', overlay: false, description: 'Latest observation, change vs previous and vs ~24 h earlier. No anomaly baseline until ≥ 14 days of coverage with controls.' },
-];
-
-export const MARKET_DEFAULTS = ['change_1h', 'change_24h', 'sma24', 'ema24', 'hourly_movement'];
-
-export interface ParsedId { raw: string; def: IndicatorDef; n?: number }
-
-/** Accepts registry ids plus sma/ema/sma_published with a bounded N written as sma24, ema72, sma7 … Anything else is rejected. */
-export function parseIds(list: string[], kind: 'market' | 'sensor'): { ok: ParsedId[]; bad: string[] } {
-  const ok: ParsedId[] = [], bad: string[] = [];
-  for (const raw of list) {
-    const id = raw.trim();
-    if (!id) continue;
-    const m = /^(sma|ema)(\d{1,3})$/.exec(id);
-    if (m) {
-      const def = kind === 'market' ? DEFS.find((d) => d.id === m[1]) : m[1] === 'sma' ? DEFS.find((d) => d.id === 'sma_published') : undefined;
-      const n = Number(m[2]);
-      if (def?.params && n >= def.params.n.min && n <= def.params.n.max) { ok.push({ raw: id, def, n }); continue; }
-      bad.push(id); continue;
-    }
-    const def = DEFS.find((d) => d.id === id && d.kind === kind && !d.params);
-    if (def) ok.push({ raw: id, def }); else bad.push(id);
-  }
-  return { ok, bad };
-}
-
-// ───────────────────────────── cache ─────────────────────────────
-
-const CACHE_MAX = 800;
-const cache = new Map<string, IndicatorResult>();
-export const cacheStats = { hits: 0, misses: 0 };
-export const clearCache = () => { cache.clear(); cacheStats.hits = 0; cacheStats.misses = 0; };
-
-function cached(key: string, make: () => IndicatorResult): IndicatorResult {
-  const hit = cache.get(key);
-  if (hit) { cacheStats.hits++; return hit; }
-  cacheStats.misses++;
-  const r = make();
-  cache.set(key, r);
-  if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string);
-  return r;
-}
-
 // ───────────────────────────── inputs ─────────────────────────────
-
-interface MarketInput {
-  id: string; venue: string; question: string; basis: string; basisKey: string; fidelity: number | null; raw: Sample[]; version: string;
-  spread: number | null; liquidity: number | null; price: number | null; quote_basis: string | null; observed_at: string; history_fetched_at: string | null;
-}
 
 export function loadMarketInput(conditionId: string): MarketInput | null {
   const m = db.prepare('SELECT condition_id, venue, question, price, quote_basis, best_bid, best_ask, spread, liquidity, observed_at FROM markets WHERE condition_id = ?').get(conditionId) as Record<string, any> | undefined;
@@ -92,8 +42,6 @@ export function loadMarketInput(conditionId: string): MarketInput | null {
   };
 }
 
-interface SensorInput { id: string; def: (typeof SENSORS)[number]; raw: Sample[]; version: string; fetched_at: string | null }
-
 export function loadSensorInput(seriesId: string): SensorInput | null {
   const def = SENSORS.find((s) => s.id === seriesId);
   if (!def) return null;
@@ -102,185 +50,21 @@ export function loadSensorInput(seriesId: string): SensorInput | null {
   return { id: seriesId, def, raw, version: I.fingerprintSamples(raw, [seriesId, def.provider]), fetched_at: meta?.fetched_at ?? null };
 }
 
-// ───────────────────────────── result builders ─────────────────────────────
-
-const iso = (t: number | null | undefined) => (t == null ? null : new Date(t * 1000).toISOString());
-
-function base(args: { id: string; kind: 'market' | 'sensor'; target: string; basis: string; unit: string; timeframe: string; params: Record<string, number | string>; asOf: number; version: string; coverage: Coverage }): IndicatorResult {
-  return {
-    id: args.id, definition_version: I.DEFINITION_VERSION, target: { kind: args.kind, id: args.target }, basis: args.basis, unit: args.unit, timeframe: args.timeframe, params: args.params,
-    as_of: args.asOf, computed_at: Math.floor(Date.now() / 1000), input_version: args.version, sample_count: args.coverage.samples, coverage: args.coverage, status: 'warming_up', reason: null, latest: null, points: [],
-  };
-}
-
-function pushPoints(pts: IndPoint[], since?: number): IndPoint[] { return since ? pts.filter((p) => p.t >= since) : pts; }
-
-function computeMarketOne(inp: MarketInput, pid: ParsedId, asOf: number, since?: number): IndicatorResult {
-  const nz = I.normalize(inp.raw, { min: 0, max: 1, asOf });
-  const reps = I.hourlyRepresentatives(nz.samples, asOf);
-  const coverage = I.coverageOf(nz.samples, reps, nz.dropped, nz.spacing_median_s);
-  const id = pid.def.family === 'ma' ? `${pid.def.id}${pid.n}` : pid.def.id;
-  const r = base({ id, kind: 'market', target: inp.id, basis: inp.basis, unit: pid.def.unit, timeframe: pid.def.family === 'ma' ? `${pid.n} x 1h` : pid.def.timeframe, params: pid.n ? { n: pid.n } : {}, asOf, version: inp.version, coverage });
-
-  const hourlyOk = nz.spacing_median_s !== null && nz.spacing_median_s <= I.CONFIG.hourly_max_median_spacing_s;
-
-  if (pid.def.family === 'change') {
-    const w = pid.def.id === 'change_1h' ? '1h' : '24h';
-    // Hourly series: measure between COMPLETED-HOUR samples. A provider's trailing "price at fetch time" point sits off the hourly grid and would
-    // put the reference outside tolerance for every contract at once; the live quote is shown separately (extra.quote). Coarser series use raw points.
-    const basisSamples = hourlyOk ? reps.map((x) => ({ t: x.t, v: x.v })) : nz.samples;
-    const c = I.probabilityChange(basisSamples, w, asOf);
-    r.status = c.status; r.reason = c.reason;
-    r.latest = c.latest ? { t: c.latest.t, value: c.value_pp, status: c.status } : null;
-    r.points = c.reference && c.latest ? [{ t: c.reference.t, value: 100 * c.reference.v, status: 'ok' }, { t: c.latest.t, value: 100 * c.latest.v, status: 'ok' }] : [];
-    r.extra = {
-      window: w, formula: '100 * (p_latest - p_reference)', measured_on: hourlyOk ? 'completed-hour samples (final real sample of each completed UTC hour)' : 'raw provider points (series is not hourly)', latest: c.latest && { t: c.latest.t, at: iso(c.latest.t), p_pct: 100 * c.latest.v }, reference: c.reference && { t: c.reference.t, at: iso(c.reference.t), p_pct: 100 * c.reference.v },
-      target_t: c.target_t, actual_interval_s: c.actual_interval_s, tolerance_s: c.tolerance_s, latest_age_s: c.latest_age_s,
-      quote: { price_pct: inp.price === null ? null : 100 * inp.price, basis: inp.quote_basis, observed_at: inp.observed_at, note: 'order-book quote basis can differ from provider history' },
-    };
-    return r;
-  }
-
-  if (!hourlyOk) { r.status = 'unsupported'; r.reason = `history is not hourly (median spacing ${nz.spacing_median_s === null ? 'unknown' : (nz.spacing_median_s / 3600).toFixed(1) + ' h'}; fidelity ${inp.fidelity ?? '?'} min)`; return r; }
-
-  if (pid.def.family === 'technical') {
-    const last = reps[reps.length - 1];
-    if (!last) { r.reason = 'no completed hourly samples'; return r; }
-    const need = pid.def.id === 'rsi14' ? I.CONFIG.rsi.period + 1 : pid.def.id === 'macd' ? I.CONFIG.macd.slow + I.CONFIG.macd.signal - 1 : I.CONFIG.bollinger.period;
-    let main: IndPoint[]; const extra: Record<string, unknown> = { required_consecutive_points: need, rule: 'final real sample of each completed UTC hour; gaps > 90 min restart warm-up; description only, not a trading signal' };
-    if (pid.def.id === 'rsi14') { main = I.rsiSeries(reps); extra.reference_lines = [30, 70]; }
-    else if (pid.def.id === 'macd') { const m = I.macdSeries(reps); main = m.macd; extra.signal = pushPoints(m.signal, since); extra.histogram = pushPoints(m.histogram, since); }
-    else { const b = I.bollingerSeries(reps); main = b.middle; extra.upper = pushPoints(b.upper, since); extra.lower = pushPoints(b.lower, since); extra.excursions_outside_0_100 = b.excursions; }
-    const tail = main[main.length - 1];
-    const complete = pid.def.id === 'macd' ? (extra.signal as IndPoint[]).at(-1)?.value !== null && (extra.signal as IndPoint[]).at(-1)?.value !== undefined : tail.value !== null;
-    const age = asOf - last.t;
-    if (age > I.CONFIG.hourly_stale_s) { r.status = 'stale'; r.reason = `latest completed-hour sample is ${(age / 3600).toFixed(1)} h old`; r.latest = { t: last.t, value: null, status: 'stale' }; }
-    else if (!complete) {
-      const segs = I.segmentsOf(reps); const seg = segs[segs.length - 1];
-      r.status = segs.length > 1 ? 'gap' : 'warming_up'; r.reason = `${seg.length} of ${need} consecutive hourly points available${segs.length > 1 ? ' since the last gap' : ''}`;
-      r.latest = { t: tail.t, value: null, status: r.status };
-    } else { r.status = 'ok'; r.latest = tail; }
-    r.points = pushPoints(main, since); r.extra = extra;
-    return r;
-  }
-
-  if (pid.def.family === 'ma') {
-    const raw = pid.def.id === 'sma' ? I.smaSeries(reps, pid.n!) : I.emaSeries(reps, pid.n!);
-    const pts: IndPoint[] = raw.map((p) => ({ t: p.t, value: p.value === null ? null : 100 * p.value, status: p.status }));
-    const last = reps[reps.length - 1];
-    if (!last) { r.reason = 'no completed hourly samples'; return r; }
-    const age = asOf - last.t;
-    const tailLatest = pts[pts.length - 1];
-    if (age > I.CONFIG.hourly_stale_s) { r.status = 'stale'; r.reason = `latest completed-hour sample is ${(age / 3600).toFixed(1)} h old`; r.latest = { t: last.t, value: null, status: 'stale' }; }
-    else if (tailLatest.value === null) {
-      const segs = I.segmentsOf(reps); const tail = segs[segs.length - 1];
-      r.status = segs.length > 1 ? 'gap' : 'warming_up';
-      r.reason = `${tail.length} of ${pid.n} consecutive hourly samples available${segs.length > 1 ? ` since the last gap (before ${iso(tail[0].t)})` : ''}`;
-      r.latest = { t: tailLatest.t, value: null, status: r.status };
-    } else { r.status = 'ok'; r.latest = tailLatest; }
-    r.points = pushPoints(pts, since);
-    r.extra = { samples_in_last_segment: I.segmentsOf(reps).at(-1)?.length ?? 0, rule: 'final real sample of each completed UTC hour; gaps > 90 min restart warm-up' };
-    return r;
-  }
-
-  if (pid.def.family === 'movement') {
-    const mv = I.hourlyMovement(reps, asOf);
-    r.status = mv.status; r.reason = mv.reason;
-    r.latest = mv.current ? { t: mv.current.t, value: mv.status === 'ok' ? mv.current.abs_pp : null, status: mv.status } : null;
-    const wide = inp.spread !== null && inp.spread > 0.10;
-    r.extra = {
-      current: mv.current, baseline: mv.baseline, exceeds_p95: mv.exceeds_p95,
-      label: mv.status !== 'ok' ? 'unavailable' : mv.exceeds_p95 ? (wide ? 'above_p95_wide_spread' : 'above_p95') : 'within_history',
-      caution: wide ? `order-book spread is ${(100 * (inp.spread as number)).toFixed(1)} pp: a move may reflect a wide spread` : null,
-      context: { spread_pp: inp.spread === null ? null : 100 * inp.spread, liquidity: inp.liquidity }, note: 'Describes how unusual this hour-to-hour move is versus this contract\'s own history. It is not a cause, a forecast or a trading signal.',
-    };
-    return r;
-  }
-  r.status = 'unsupported'; r.reason = 'indicator not applicable to markets';
-  return r;
-}
-
-const SENSOR_AGE_S = (def: SensorInput['def']) => def.intervalMin * 60 * 3;
-
-function computeSensorOne(inp: SensorInput, pid: ParsedId, asOf: number, since?: number): IndicatorResult {
-  const nz = I.normalize(inp.raw, { asOf });
-  const coverage: Coverage = { first_t: nz.samples[0]?.t ?? null, last_t: nz.samples.at(-1)?.t ?? null, samples: nz.samples.length, segments: 1, gaps: 0, spacing_median_s: nz.spacing_median_s, dropped: nz.dropped };
-  const id = pid.n ? `${pid.def.id === 'sma_published' ? 'sma' : pid.def.id}${pid.n}` : pid.def.id;
-  const r = base({ id, kind: 'sensor', target: inp.id, basis: `${inp.def.provider}`, unit: inp.def.unit, timeframe: pid.def.timeframe, params: pid.n ? { n: pid.n } : {}, asOf, version: inp.version, coverage });
-  const prefix = inp.id.split(':')[0];
-  const applies = (pid.def.family === 'baseline' && prefix === 'pw') || (pid.def.family === 'published' && prefix === 'fred') || (pid.def.family === 'observed' && (prefix === 'opensky' || prefix === 'ioda'));
-  if (!applies) { r.status = 'unsupported'; r.reason = `${pid.def.title} does not apply to ${inp.def.provider} (${prefix}) series`; return r; }
-  const extraBase = { observed_at: iso(nz.samples.at(-1)?.t), fetched_at: inp.fetched_at, provider: inp.def.provider, note: inp.def.group === 'chokepoint' || prefix === 'fred' ? 'Daily/published series: observation time is the data\'s own date, not collection time; never live.' : 'Observation time vs collection time shown separately.' };
-
-  if (pid.def.family === 'baseline') {
-    const b = I.dailyBaselineChange(nz.samples, asOf);
-    r.status = b.status; r.reason = b.reason; r.latest = b.latest ? { t: b.latest.t, value: b.abs_change, status: b.status } : null;
-    r.extra = { ...extraBase, latest_value: b.latest?.v ?? null, baseline_mean: b.baseline_mean, valid_days: b.valid_days, abs_change: b.abs_change, pct_change: b.pct_change, observation_age_days: b.observation_age_days, window: `preceding ${I.CONFIG.daily_baseline.window_days} calendar days, current excluded` };
-    r.points = b.latest ? [{ t: b.latest.t, value: b.latest.v, status: 'ok' }] : [];
-    return r;
-  }
-  if (pid.def.family === 'published' && pid.def.id === 'published_change') {
-    const c = I.publishedChange(nz.samples, asOf);
-    r.status = c.status; r.reason = c.reason; r.latest = c.latest ? { t: c.latest.t, value: c.abs_change, status: c.status } : null;
-    r.extra = { ...extraBase, latest_value: c.latest?.v ?? null, previous: c.previous, abs_change: c.abs_change, pct_change: c.pct_change, days_between: c.days_between, observation_age_days: c.observation_age_days };
-    r.points = [c.previous, c.latest].filter(Boolean).map((s) => ({ t: s!.t, value: s!.v, status: 'ok' as IndStatus }));
-    return r;
-  }
-  if (pid.def.id === 'sma_published') {
-    const pts = I.smaPublished(nz.samples, pid.n!);
-    const last = nz.samples.at(-1);
-    const age = last ? (asOf - last.t) / 86400 : null;
-    const tail = pts.at(-1);
-    if (!last) { r.reason = 'no observations'; return r; }
-    if (age! > I.CONFIG.published.max_age_days) { r.status = 'stale'; r.reason = `latest observation is ${age!.toFixed(1)} days old`; r.latest = { t: last.t, value: null, status: 'stale' }; }
-    else if (tail!.value === null) { r.status = 'warming_up'; r.reason = `fewer than ${pid.n} consecutive observations since the last interruption`; r.latest = { t: tail!.t, value: null, status: 'warming_up' }; }
-    else { r.status = 'ok'; r.latest = tail!; }
-    r.points = pushPoints(pts, since); r.extra = { ...extraBase, rule: 'consecutive published observations; interruption > 7 days resets warm-up' };
-    return r;
-  }
-  if (pid.def.family === 'observed') {
-    const o = I.observedChange(nz.samples, asOf, SENSOR_AGE_S(inp.def));
-    r.status = o.status; r.reason = o.reason; r.latest = o.latest ? { t: o.latest.t, value: o.latest.v, status: o.status } : null;
-    r.extra = { ...extraBase, change_vs_previous: o.change_vs_previous, change_24h: o.change_24h, coverage_days: o.coverage_days, baseline: o.baseline, baseline_reason: o.baseline_reason, age_s: o.age_s };
-    r.points = pushPoints(nz.samples.map((s) => ({ t: s.t, value: s.v, status: 'ok' as IndStatus })), since);
-    return r;
-  }
-  r.status = 'unsupported'; r.reason = 'indicator not implemented'; return r;
-}
-
 // ───────────────────────────── public API ─────────────────────────────
 
-export interface ComputeOpts { asOf?: number; since?: number }
-
-export function marketIndicators(conditionId: string, ids: string[], opts: ComputeOpts = {}): { target: string; as_of: number; definition_version: string; indicators: IndicatorResult[]; rejected: string[] } | null {
+/**
+ * The edge where the store is: resolve an id to the data it needs, then hand that to the pure
+ * computation. Nothing below this line knows how an indicator is calculated; nothing above it
+ * knows which tables exist.
+ */
+export function marketIndicators(conditionId: string, ids: string[], opts: ComputeOpts = {}): IndicatorResponse | null {
   const inp = loadMarketInput(conditionId);
-  if (!inp) return null;
-  const asOf = opts.asOf ?? Math.floor(Date.now() / 1000);
-  const { ok, bad } = parseIds(ids.length ? ids : MARKET_DEFAULTS, 'market');
-  const out = ok.map((pid) => {
-    const key = ['m', conditionId, pid.raw, inp.version, I.DEFINITION_VERSION, Math.floor(asOf / 60)].join('|');
-    const r = cached(key, () => computeMarketOne(inp, pid, asOf)); // cache holds the FULL result; cropping happens below
-    return opts.since ? { ...r, points: r.points.filter((p) => p.t >= opts.since!) } : r;
-  });
-  return { target: conditionId, as_of: asOf, definition_version: I.DEFINITION_VERSION, indicators: out, rejected: bad };
+  return inp ? marketIndicatorsFromInput(inp, ids, opts) : null;
 }
 
-export function defaultSensorIds(seriesId: string): string[] {
-  const p = seriesId.split(':')[0];
-  return p === 'pw' ? ['baseline_28d'] : p === 'fred' ? ['published_change', 'sma7', 'sma20'] : ['observed_change'];
-}
-
-export function sensorIndicators(seriesId: string, ids: string[], opts: ComputeOpts = {}): { target: string; as_of: number; definition_version: string; indicators: IndicatorResult[]; rejected: string[] } | null {
+export function sensorIndicators(seriesId: string, ids: string[], opts: ComputeOpts = {}): IndicatorResponse | null {
   const inp = loadSensorInput(seriesId);
-  if (!inp) return null;
-  const asOf = opts.asOf ?? Math.floor(Date.now() / 1000);
-  const { ok, bad } = parseIds(ids.length ? ids : defaultSensorIds(seriesId), 'sensor');
-  const out = ok.map((pid) => {
-    const key = ['s', seriesId, pid.raw, inp.version, I.DEFINITION_VERSION, Math.floor(asOf / 60)].join('|');
-    const r = cached(key, () => computeSensorOne(inp, pid, asOf));
-    return opts.since ? { ...r, points: r.points.filter((p) => p.t >= opts.since!) } : r;
-  });
-  return { target: seriesId, as_of: asOf, definition_version: I.DEFINITION_VERSION, indicators: out, rejected: bad };
+  return inp ? sensorIndicatorsFromInput(inp, ids, opts) : null;
 }
 
 // ───────────────────────────── watchlist cards ─────────────────────────────
@@ -411,7 +195,10 @@ export function activityIndicators(now = Date.now()) {
   const win = (ms: number, label: string): ActivityWindow => {
     const since = new Date(now - ms).toISOString();
     const rows = db.prepare(`SELECT source_id, published_at, first_seen_at FROM events WHERE first_seen_at >= ? AND relevant = 1`).all(since) as unknown as { source_id: string; published_at: string; first_seen_at: string }[];
-    const official = new Set(['un-news-me', 'un-press', 'ofsi', 'ofac', 'fcdo', 'easa-czib', 'reliefweb-me']);
+    // Derived from the registry, and only from sources that can actually deliver: the old literal
+    // set included reliefweb-me, which is disabled, so "official" counted a source that never
+    // contributes an item.
+    const official = OFFICIAL_SOURCE_IDS;
     let news = 0, off = 0, late = 0;
     for (const r of rows) {
       if (Date.parse(r.first_seen_at) - Date.parse(r.published_at) > 6 * 3600_000) { late++; continue; }

@@ -7,6 +7,7 @@ import { ActionButton } from '../ActionButton';
 import { useEffect, useState } from 'react';
 import type { ClaimView, DossierDetail, DossierSummary, TimelineItem } from '../../../shared/research';
 import { api } from '../../api';
+import { useResource } from '../../read';
 import { absTime, ago } from '../../format';
 import { ErrorChip, SourceLine, Versions, attempt } from './common';
 
@@ -167,19 +168,23 @@ export function Dossiers({ initial, versionKey }: { initial: string | null; vers
   const context = useHashContext();
   const [search, setSearch] = useDraft('dossier-search', '');
   const [state, setState] = useDraft('dossier-state', 'all');
-  const [list, setList] = useState<DossierSummary[]>([]);
   const [sel, setSel] = useState<string | null>(initial);
   const [title, setTitle] = useDraft('new-dossier-title', '');
-  const [err, setErr] = useState<string | null>(null);
-  const load = () => api.dossiers().then((l) => { setList(l); if (!sel && l[0]) { setSel(l[0].id); navigateContext({ dossier: l[0].id }, undefined, true); } }).catch((e) => setErr((e as Error).message));
-  useEffect(() => { load(); }, [versionKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [writeErr, setWriteErr] = useState<string | null>(null);
+  const { data, error: readErr, reload: load } = useResource<DossierSummary[]>(versionKey, () => api.dossiers(), { label: 'Dossiers' });
+  const list = data ?? [];
+  const err = readErr ?? writeErr;
+  // Selecting the first dossier is a consequence of what was read, not part of reading it.
+  useEffect(() => {
+    if (data && data.length > 0 && !sel) { setSel(data[0].id); navigateContext({ dossier: data[0].id }, undefined, true); }
+  }, [data, sel]);
   useEffect(() => { setSel(context.dossier ?? initial ?? list[0]?.id ?? null); }, [context.dossier, initial]);
   const choose = (id: string) => { setSel(id); navigateContext({ dossier: id, tab: 'dossiers' }, 'research'); };
   const shown = list.filter((d) => d.title.toLowerCase().includes(search.toLowerCase()) && (state === 'all' || d.workflow_state === state));
   return (
     <div className="research-split">
       <aside className="panel">
-        <div className="row2"><input placeholder="new dossier title" value={title} onChange={(e) => setTitle(e.target.value)} /><ActionButton disabled={!title.trim()} onClick={() => attempt(() => api.createDossier({ title }), setErr).then((r) => { if (r) { setTitle(''); choose(r.dossier.id); load(); } })}>Create</ActionButton></div>
+        <div className="row2"><input placeholder="new dossier title" value={title} onChange={(e) => setTitle(e.target.value)} /><ActionButton disabled={!title.trim()} onClick={() => attempt(() => api.createDossier({ title }), setWriteErr).then((r) => { if (r) { setTitle(''); choose(r.dossier.id); load(); } })}>Create</ActionButton></div>
         <ErrorChip e={err} />
         <input type="search" aria-label="Search dossiers" placeholder="Search dossiers…" value={search} onChange={(e) => setSearch(e.target.value)} /><select aria-label="Dossier filter" value={state} onChange={(e) => setState(e.target.value)}><option value="all">All dossiers</option><option>open</option><option>active</option><option>closed</option></select>
         <ul className="dossierlist">{shown.map((d) => (

@@ -1,0 +1,15 @@
+node_modules
+dist
+.git
+.claude
+*.log
+.DS_Store
+# Local databases and captured material never go into an image.
+data/*.sqlite*
+data/tracker.db
+data/demo_seed.json
+data/inbox/*.eml
+docs/screenshots/
+docs/review/
+.env
+.env.*

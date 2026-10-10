@@ -3,14 +3,14 @@
 // item is first referenced by research and re-checked after each collection; nothing earlier than the first capture is invented.
 import { createHash } from 'node:crypto';
 import { db } from '../db.ts';
-import { NEWS_SOURCES } from '../registry.ts';
+import { SOURCE_META } from '../registry.ts';
 import { originGroupOf } from '../story.ts';
 import type { SourceItemRef, SourceVersion } from '../../shared/research.ts';
 
 type Row = Record<string, any>;
 export const REF_RE = /^(web):([a-z0-9-]+):(.{1,2000})$|^(telegram):([A-Za-z][A-Za-z0-9_]{3,31}):(\d{1,12})$/;
 export const isRef = (r: unknown): r is string => typeof r === 'string' && REF_RE.test(r);
-const srcMeta = new Map(NEWS_SOURCES.map((s) => [s.id, s]));
+const srcMeta = SOURCE_META;
 
 /** Resolve a reference to its current original record, or null when it no longer exists (shown as unavailable, never guessed). */
 export function resolveRef(ref: string): SourceItemRef | null {

@@ -1,16 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { CoverageReport } from '../../../shared/research';
 import { api } from '../../api';
 import { absTime, ago } from '../../format';
+import { useResource } from '../../read';
 
 const dur = (s: number | null) => (s === null ? '—' : s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`);
 
 export function Coverage({ versionKey, now }: { versionKey: string; now: number }) {
   const [w, setW] = useState(24);
-  const [d, setD] = useState<CoverageReport | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  useEffect(() => { api.coverage(w).then(setD).catch((e) => setErr((e as Error).message)); }, [versionKey, w]);
-  if (err) return <div className="banner">{err}</div>;
+  const { data: d, error: err } = useResource<CoverageReport>([versionKey, w], () => api.coverage(w), { label: 'Coverage' });
+  if (err) return <div className="banner" role="alert">{err}</div>;
   if (!d) return <p className="muted">Loading coverage…</p>;
   return (
     <div className="coverage">

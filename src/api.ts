@@ -1,24 +1,12 @@
 import type { TgChannel, Counterpart, TgOverview, TgPost, SensorSeries, AssetsFile, Market, MarketHistory, Status, TrackerEvent, WatchCard, WatchItem, Prefs, ReactionResult, ActivityResponse, FeedResponse, SourcesResponse, SourceConfigView, WalletsOverview, WalletDetail, LargeTrade, HolderGroup, AlertsResponse } from '../shared/types';
 import type { IndicatorResult } from '../shared/indicators';
 import type { VesselView } from '../shared/maritime';
+import { get, send } from './http';
 import type { Briefing, SavedBriefingRow } from '../shared/briefing';
 import type { CalendarEntryView, ClaimView, CoverageReport, DossierDetail, DossierSummary, HypothesisView, ObservationTarget, SourceItemRef, SourceVersion, TaskView } from '../shared/research';
 
-async function get<T>(url: string): Promise<T> {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`${url} → HTTP ${r.status}`);
-  return r.json() as Promise<T>;
-}
-
 export interface IndResponse { target: string; as_of: number; definition_version: string; indicators: IndicatorResult[]; rejected: string[]; seed_mode: boolean }
 export interface WatchResponse { as_of: number; definition_version: string; cards: WatchCard[]; items: WatchItem[]; seed_mode: boolean }
-
-async function send<T>(method: 'PUT' | 'POST' | 'DELETE' | 'PATCH', url: string, body?: unknown): Promise<T> {
-  const r = await fetch(url, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error((j as { error?: string }).error ?? `${url} → HTTP ${r.status}`);
-  return j as T;
-}
 
 export type BriefingWindowChoice = { hours: number } | { since: 'last' };
 const briefingQuery = (w: BriefingWindowChoice) => ('since' in w ? 'since=last' : `hours=${w.hours}`);
@@ -95,6 +83,8 @@ export const api = {
   cachedTranslation: (id: string) => get<import('../shared/translation').NewsTranslation | null>(`/api/events/${encodeURIComponent(id)}/translation`),
   translation: (id: string) => send<import('../shared/translation').NewsTranslation>('POST', `/api/events/${encodeURIComponent(id)}/translation`),
   status: () => get<Status>('/api/status'),
+  /** The client's poll: says "I am still here, keep the data fresh" and returns the same status. */
+  keepFresh: () => send<Status>('POST', '/api/keep-fresh'),
   events: (includeFiltered: boolean) => get<TrackerEvent[]>(`/api/events?limit=400${includeFiltered ? '&include_filtered=1' : ''}`),
   counterparts: (id: string) => get<Counterpart[]>(`/api/markets/${encodeURIComponent(id)}/counterparts`),
   tgChannels: () => get<TgChannel[]>('/api/telegram/channels'),
@@ -105,12 +95,7 @@ export const api = {
   market: (id: string) => get<Market>(`/api/markets/${encodeURIComponent(id)}`),
   markets: () => get<Market[]>('/api/markets'),
   history: (id: string) => get<MarketHistory & { fetch_state: string; error: string | null }>(`/api/markets/${id}/history`),
-  refresh: async () => {
-    const r = await fetch('/api/refresh', { method: 'POST' });
-    const j = await r.json();
-    if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
-    return j as Status;
-  },
+  refresh: () => send<Status>('POST', '/api/refresh'),
 };
 
 export function subscribeStream(onEvent: (event: string, data: any) => void): () => void {

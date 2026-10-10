@@ -3,7 +3,7 @@
 // Ordering is by publication time with keyset pagination; "new" means first collected after a reader's snapshot and NOT backfilled.
 import type { Express } from 'express';
 import { db, kvGet, kvSet } from './db.ts';
-import { NEWS_SOURCES } from './registry.ts';
+import { NEWS_SOURCES, SOURCE_META } from './registry.ts';
 import type { FeedItem, FeedKind, FeedResponse } from '../shared/types.ts';
 
 type Row = Record<string, any>;
@@ -64,7 +64,7 @@ function unionSql(f: FeedQuery): { sql: string; args: (string | number)[] } | { 
   return { sql: branches.join(' UNION ALL '), args };
 }
 
-const srcMeta = new Map(NEWS_SOURCES.map((s) => [s.id, s]));
+const srcMeta = SOURCE_META;
 function toItem(r: Row): FeedItem {
   const isTg = r.platform === 'telegram';
   const meta = isTg ? null : srcMeta.get(r.src);

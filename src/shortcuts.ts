@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { View } from './components/StatusBar';
+import { VIEW_KEY_MAP, type View } from './views';
 
 export interface ShortcutDef {
   key: string;
@@ -15,6 +15,9 @@ export const SHORTCUT_LIST: ShortcutDef[] = [
   { key: '4', label: '4', description: 'Research (briefing, dossiers, hypotheses)', category: 'Navigation' },
   { key: '5', label: '5', description: 'Sources & alerts', category: 'Navigation' },
   { key: 'b', label: 'b', description: 'Open the change briefing', category: 'Navigation' },
+  // Kept working for one release; documented so the table and the key map cannot drift apart.
+  { key: '6', label: '6', description: 'Research (legacy alias for 4)', category: 'Navigation' },
+  { key: '7', label: '7', description: 'Sources (legacy alias for 5)', category: 'Navigation' },
   { key: '/', label: '/', description: 'Focus search input', category: 'Actions' },
   { key: 'j', label: 'j', description: 'Next event in feed', category: 'Actions' },
   { key: 'k', label: 'k', description: 'Previous event in feed', category: 'Actions' },
@@ -23,16 +26,7 @@ export const SHORTCUT_LIST: ShortcutDef[] = [
   { key: 'Escape', label: 'Esc', description: 'Close modals & blur search', category: 'Help' },
 ];
 
-/** Five destinations. Keys 6 and 7 stay as aliases for one release (they used to open Research and Sources). */
-export const VIEW_KEY_MAP: Record<string, View> = {
-  '1': 'dashboard',
-  '2': 'feed',
-  '3': 'wallets',
-  '4': 'research',
-  '5': 'sources',
-  '6': 'research',
-  '7': 'sources',
-};
+export { VIEW_KEY_MAP };
 
 export function isInputElement(target: EventTarget | null): boolean {
   if (!target || !(target instanceof HTMLElement)) return false;

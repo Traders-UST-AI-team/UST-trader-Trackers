@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SourceHealth, Status } from '../../shared/types';
 import { absTime, ago } from '../format';
+import { WORKSPACES, navItemsFor, workspaceOf, type View, type WorkspaceId } from '../views';
 
 const KIND: Record<string, string> = { prediction_market: 'Prediction markets', news: 'News', official: 'Official', maritime: 'Maritime', analysis: 'Analysis', sensor: 'Sensors', social: 'Social (viewpoint-labelled)', wallet: 'Wallet activity' };
 const ORDER = ['prediction_market', 'wallet', 'sensor', 'official', 'maritime', 'news', 'social', 'analysis'];
@@ -20,7 +21,7 @@ function Pill({ s, now }: { s: SourceHealth; now: number }) {
   );
 }
 
-export type View = 'dashboard' | 'feed' | 'telegram' | 'wallets' | 'alerts' | 'research' | 'sources';
+export type { View } from '../views';
 export function StatusBar({ status, onRefresh, now, view, setView, unread, alerts, onOpenShortcuts }: { status: Status | null; onRefresh: () => void; now: number; view: View; setView: (v: View) => void; unread?: number; alerts?: number; onOpenShortcuts?: () => void }) {
   const [theme, setTheme] = useState(() => localStorage.getItem('war-tracker-theme') ?? 'system');
   useEffect(() => {
@@ -40,6 +41,15 @@ export function StatusBar({ status, onRefresh, now, view, setView, unread, alert
   const refreshing = status?.refreshing ?? false;
   const srcs = status?.sources ?? [];
   const count = (c: Cls) => srcs.filter((s) => clsOf(s) === c).length;
+  // Which product we are in comes from the registry, not from a hardcoded option list.
+  const workspace: WorkspaceId = workspaceOf(view);
+  const isReviewMode = workspace === 'reviews';
+  // A sub-view highlights the nav entry that leads to it.
+  const navFor = (id: View) => (id === 'feed' ? ['feed', 'telegram'] : id === 'sources' ? ['sources', 'alerts'] : [id]);
+  const badges: Partial<Record<View, { count: number; title: string }>> = {
+    feed: { count: unread ?? 0, title: 'Unread arrivals (backfill excluded)' },
+    sources: { count: alerts ?? 0, title: 'Unacknowledged in-app alerts' },
+  };
 
   const problems = count('stale') + count('err') + count('never');
   const [menu, setMenu] = useState(false);
@@ -54,23 +64,42 @@ export function StatusBar({ status, onRefresh, now, view, setView, unread, alert
 
   return (
     <header className="topbar slim">
-      <div className="brand"><span className="logo" aria-hidden /><h1>War Tracker</h1></div>
+      <div className="desk-brand">
+        <img className="desk-mark" src="/brand/tracker-icon-v1.png" alt="" width="36" height="36" />
+        <select aria-label="Workspace" value={workspace} onChange={(e) => setView((e.target.value === 'reviews' ? 'reviews' : 'dashboard'))}>
+          {WORKSPACES.map((w) => <option key={w.id} value={w.id}>{w.label}</option>)}
+        </select>
+      </div>
 
-      <nav className="viewnav" aria-label="View">
-          <button className={view === 'dashboard' ? 'on' : ''} onClick={() => setView('dashboard')} title="Items → contracts → price → save (1)">Monitor</button>
-          <button className={view === 'feed' || view === 'telegram' ? 'on' : ''} onClick={() => setView('feed')} title="All sources, including Telegram (2)">Feed{unread ? <span className="badge" title="Unread arrivals (backfill excluded)">{unread > 99 ? '99+' : unread}</span> : null}</button>
-          <button className={view === 'wallets' ? 'on' : ''} onClick={() => setView('wallets')} title="Pilot markets, large trades, watched wallets (3)">Markets</button>
-          <button className={view === 'research' ? 'on' : ''} onClick={() => setView('research')} title="Briefing, dossiers, hypotheses (4)">Research</button>
-          <button className={view === 'sources' || view === 'alerts' ? 'on' : ''} onClick={() => setView('sources')} title="Collection health and alerts (5)">Sources &amp; alerts{alerts ? <span className="badge" title="Unacknowledged in-app alerts">{alerts > 99 ? '99+' : alerts}</span> : null}</button>
-      </nav>
+      {!isReviewMode && (
+        <nav className="viewnav" aria-label="View">
+          {navItemsFor(workspace).map((item) => {
+            const on = navFor(item.id).includes(view);
+            const badge = badges[item.id];
+            return (
+              <button key={item.id} className={on ? 'on' : ''} onClick={() => setView(item.id)} title={item.title}>
+                {item.navLabel}
+                {badge && badge.count ? <span className="badge" title={badge.title}>{badge.count > 99 ? '99+' : badge.count}</span> : null}
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
-      <div ref={health} className="sources" aria-label="Source health">
+      {/* Source health describes the trader workspace's feeds; the reviews workspace has its own. */}
+      <div ref={health} className="sources" aria-label="Source health" hidden={isReviewMode}>
         <button className={`healthsum ${problems ? 'warn' : 'good'}`} onClick={() => setOpen(!open)} aria-expanded={open} title="Show every source">
-          {problems === 0 ? <span className="ok">● all sources OK</span> : <>
-            {count('err') > 0 && <span className="err">✕ {count('err')} failed</span>}
-            {count('stale') > 0 && <span className="stale">◐ {count('stale')} stale</span>}
-            {count('never') > 0 && <span className="never">○ {count('never')} pending</span>}
-          </>}
+          {/* Failed, stale and pending stay separate: an outage must not read like a source that is
+              merely not connected by design (blocked sources are listed in the panel, not counted here).
+              Seed mode fetches nothing, so staleness there is expected and the banner already says so. */}
+          {!status ? <span>Connecting…</span>
+            : status.mode === 'seed' ? <span>● Demo data</span>
+            : problems === 0 ? <span className="ok">● Sources healthy</span>
+            : <>
+              {count('err') > 0 && <span className="err">✕ {count('err')} failed</span>}
+              {count('stale') > 0 && <span className="stale">◐ {count('stale')} stale</span>}
+              {count('never') > 0 && <span className="never">○ {count('never')} pending</span>}
+            </>}
         </button>
         {open && (
           <div className="healthpanel" role="region" aria-label="All sources">
