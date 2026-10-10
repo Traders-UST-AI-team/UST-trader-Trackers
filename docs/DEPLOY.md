@@ -17,11 +17,20 @@ BUCKET=$PROJECT-traders-tracker-db
 gcloud config set project $PROJECT
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com storage.googleapis.com
 
-# 存数据库副本的 bucket（只给 Cloud Run 的服务账号写权限）
-gcloud storage buckets create gs://$BUCKET --location=$REGION --uniform-bucket-level-access
+# 源码部署由默认 compute 服务账号构建。项目在组织下、且组织关闭了默认服务账号的自动授权时，
+# 它没有任何权限，需要补上构建角色：
 NUMBER=$(gcloud projects describe $PROJECT --format='value(projectNumber)')
-gcloud storage buckets add-iam-policy-binding gs://$BUCKET \
-  --member="serviceAccount:$NUMBER-compute@developer.gserviceaccount.com" --role=roles/storage.objectAdmin
+gcloud projects add-iam-policy-binding $PROJECT \
+  --member="serviceAccount:$NUMBER-compute@developer.gserviceaccount.com" --role=roles/run.builder --condition=None
+
+# 运行时用专用服务账号，只能读写这一个 bucket
+gcloud iam service-accounts create traders-tracker --display-name="Traders Tracker runtime"
+RUN_SA=traders-tracker@$PROJECT.iam.gserviceaccount.com
+
+# 存数据库副本的 bucket（禁止公开访问）
+gcloud storage buckets create gs://$BUCKET --location=$REGION --uniform-bucket-level-access
+gcloud storage buckets update gs://$BUCKET --public-access-prevention
+gcloud storage buckets add-iam-policy-binding gs://$BUCKET --member="serviceAccount:$RUN_SA" --role=roles/storage.objectAdmin
 
 # 团队口令：随机生成，只存在本机 .env.deploy（已被 git 忽略）
 echo "TEAM_WRITE_TOKEN=$(openssl rand -base64 18 | tr -d '/+=')" > .env.deploy
@@ -35,6 +44,7 @@ gcloud run deploy traders-tracker \
   --source . --region $REGION --allow-unauthenticated \
   --min-instances 1 --max-instances 1 --no-cpu-throttling \
   --cpu 1 --memory 1Gi \
+  --service-account $RUN_SA \
   --set-env-vars "LITESTREAM_BUCKET=$BUCKET,TEAM_WRITE_TOKEN=$TEAM_WRITE_TOKEN,SEC_USER_AGENT=TradersTracker <联系邮箱>"
 ```
 
