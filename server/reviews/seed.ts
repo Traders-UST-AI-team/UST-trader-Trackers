@@ -23,7 +23,7 @@ export const SEED_COMPANIES: Company[] = [
   {
     ticker: 'SN',
     name: 'SharkNinja, Inc.',
-    cik: '0001974191',
+    cik: '0001957132',
     fiscal_year_end_month: 12,
   },
   {
@@ -53,16 +53,6 @@ export const SEED_PRODUCTS: Product[] = [
     amazon_url: 'https://www.amazon.com/dp/B09HM94VDS',
     bestbuy_sku: '6503043',
     reddit_query: 'MX Master 3S',
-    is_active: true,
-  },
-  {
-    asin: 'B000000NKE',
-    ticker: 'NKE',
-    title: 'Nike Air Zoom Pegasus 41 Road Running Shoes',
-    category: 'Athletic Footwear',
-    amazon_url: 'https://www.amazon.com/dp/B000000NKE',
-    bestbuy_sku: null,
-    reddit_query: 'Pegasus 41',
     is_active: true,
   },
   {
@@ -498,7 +488,7 @@ export function buildLogiM510SeedReviews(): RawAndScore[] {
 }
 
 /** Bump when the bundled dataset changes; rows from the previous version are then replaced. */
-export const SEED_VERSION = 'v4_provenance';
+export const SEED_VERSION = 'v5_watchlist';
 
 /**
  * Loads the bundled demo dataset.
@@ -537,6 +527,11 @@ export function seedReviewsDatabase(
   // the old seeder stops presenting invented rows as captured evidence.
   const relabel = db.prepare("UPDATE reviews_raw SET provenance = 'seed', source_type = 'seed' WHERE review_id = ? AND provenance != 'seed'");
   for (const item of seedItems) relabel.run(item.raw.review_id);
+
+  // Corrections to reference rows earlier versions of this dataset got wrong. A placeholder ASIN
+  // is not a product and must not be collected; SharkNinja's CIK was mistyped, so EDGAR 404'd.
+  db.prepare("UPDATE products SET is_active = 0 WHERE asin = 'B000000NKE'").run();
+  db.prepare("UPDATE companies SET cik = '0001957132', financials_synced_at = NULL WHERE ticker = 'SN' AND cik = '0001974191'").run();
 
   // Replace only the dataset's own rows. Everything else in these tables is left alone.
   db.exec(`

@@ -14,6 +14,7 @@ import type { ChannelExposure, CollectionRun, CollectionStatus, Company, Connect
 import { CanaryUnavailableError, fetchBestBuyReviews, type CanaryDeps } from './adapters.ts';
 import { amazonProvider, fetchAmazonReviews, type AmazonDeps } from './amazon.ts';
 import { fetchReportedQuarters, lookupCompany, type EdgarDeps } from './edgar.ts';
+import { HttpError } from '../http.ts';
 import { ingestReviews, type Scorer } from './ingest.ts';
 import { runInTransaction } from './db.ts';
 import { getDashboardSummary, toCompany, toProduct } from './service.ts';
@@ -174,7 +175,20 @@ export async function syncFinancials(db: DatabaseSync, company: Company, opts: {
   const setStatus = db.prepare('UPDATE companies SET financials_synced_at = ?, financials_status = ? WHERE ticker = ?');
   try {
     if (!company.cik) throw new CanaryUnavailableError('edgar', 'no CIK on record for this company');
-    const quarters = await fetchReportedQuarters({ ticker: company.ticker, cik: company.cik, fiscal_year_end_month: company.fiscal_year_end_month }, opts.edgar);
+    let cik = company.cik;
+    let quarters;
+    try {
+      quarters = await fetchReportedQuarters({ ticker: company.ticker, cik, fiscal_year_end_month: company.fiscal_year_end_month }, opts.edgar);
+    } catch (e) {
+      // A 404 means EDGAR has no such CIK: the stored one is wrong. Re-resolve it from the ticker
+      // once, store the correction, and retry, so a mistyped CIK cannot stay broken forever.
+      if (!(e instanceof HttpError && e.status === 404)) throw e;
+      const found = await lookupCompany(company.ticker, opts.edgar).catch(() => null);
+      if (!found || found.cik === cik) throw e;
+      cik = found.cik;
+      db.prepare('UPDATE companies SET cik = ? WHERE ticker = ?').run(cik, company.ticker);
+      quarters = await fetchReportedQuarters({ ticker: company.ticker, cik, fiscal_year_end_month: company.fiscal_year_end_month }, opts.edgar);
+    }
     if (quarters.length === 0) throw new CanaryUnavailableError('edgar', 'EDGAR has no quarterly revenue in XBRL for this company');
     const upsert = db.prepare(`
       INSERT OR REPLACE INTO company_financials (id, ticker, fiscal_year, fiscal_quarter, fiscal_label, period_start_date, period_end_date, sec_report_date, revenue_usd, revenue_yoy_growth, operating_income_usd, gross_margin, accession_number, official_excerpt, source_filing_url, provenance)

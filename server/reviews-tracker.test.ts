@@ -324,3 +324,33 @@ test('EDGAR: a 52/53-week year closing in the first days of a month belongs to t
   assert.equal(fiscalYearEndMonth('0202'), 1, 'a retailer closing in early February');
   assert.equal(fiscalYearEndMonth(undefined), null);
 });
+
+test('financials: a stored CIK that EDGAR does not know is re-resolved from the ticker and corrected', async () => {
+  const store = openReviewsStore(':memory:');
+  try {
+    seedReviewsDatabase(store);
+    store.prepare("UPDATE companies SET cik = '0000000001' WHERE ticker = 'SN'").run();
+    const t = router({
+      'company_tickers.json': { 0: { cik_str: 1957132, ticker: 'SN', title: 'SharkNinja, Inc.' } },
+      'submissions/CIK0001957132': { name: 'SharkNinja, Inc.', fiscalYearEnd: '1231' },
+      'companyfacts/CIK0001957132': { facts: { 'us-gaap': { Revenues: { units: { USD: [fact('2025-01-01', '2025-03-31', 1200, '2025-05-01')] } } } } },
+    });
+    const sn = { ticker: 'SN', name: 'SharkNinja', cik: '0000000001', fiscal_year_end_month: 12 };
+    const run = await syncFinancials(store, sn, { edgar: { transport: { fetchImpl: t.fetchImpl, retries: 0 } }, trigger: 'manual' });
+    assert.equal(run.status, 'ok');
+    assert.equal((store.prepare("SELECT cik FROM companies WHERE ticker = 'SN'").get() as { cik: string }).cik, '0001957132');
+  } finally {
+    closeReviewsStore(store);
+  }
+});
+
+test('seed: the placeholder Nike ASIN is not tracked and SharkNinja carries its real CIK', () => {
+  const store = openReviewsStore(':memory:');
+  try {
+    seedReviewsDatabase(store);
+    assert.equal(store.prepare("SELECT 1 FROM products WHERE asin = 'B000000NKE' AND is_active = 1").get(), undefined);
+    assert.equal((store.prepare("SELECT cik FROM companies WHERE ticker = 'SN'").get() as { cik: string }).cik, '0001957132');
+  } finally {
+    closeReviewsStore(store);
+  }
+});
