@@ -1,6 +1,6 @@
 ## Repository clean-up (2026-10-10)
 
-Old planning/report files moved to `docs/archive/` (nothing deleted except the empty `data/tracker.db`). Before publishing: no secrets or personal data found in the tree; live databases, the demo seed, review kits containing third-party text and screenshots are excluded by `.gitignore`. Regenerate the demo seed with `npm run seed:export` after a live run.
+Old planning/report files were moved to `docs/archive/` and later deleted at the owner's request (still in the first Git commit); the empty `data/tracker.db` was removed. Before publishing: no secrets or personal data found in the tree; live databases, the demo seed, review kits containing third-party text and screenshots are excluded by `.gitignore`. Regenerate the demo seed with `npm run seed:export` after a live run.
 
 ## Session 7 (2026-10-10, HK) — evidence-desk positioning, change briefing, UI migration
 
@@ -10,7 +10,7 @@ The owner chose the positioning "evidence & provenance research desk" (not a Blo
 - **UI migration** per `docs/UI_REDESIGN_SPEC.md` (progress table in §11). The design itself came from an Opus agent after research of public product docs (sources in the spec); the first canvas was rejected as too cluttered and replaced.
 - **Verified:** `npm run check` 148/148, `npm run acceptance` 29/29, browser pass on live data (briefing, Monitor dark, Sources & alerts at 375 px light).
 - **Findings:** most stored contracts have no stored price history (history is fetched when a chart opens), so the briefing falls back to the venue-reported 24h change and says so; 22 of 33 touched contracts had no computable change at test time. The project folder was renamed from `Traders War Tracker` to `Traders Tracker` mid-session (not by the agent); old path mentions in earlier log entries and in the temp handoff file refer to the old name.
-- **Trial setup (same day), later shelved:** an automatic morning snapshot job (`briefing-daily`; now **off by default**, switch on in the Briefing tab) and `docs/archive/BRIEFING_TRIAL.md` (daily questions and log). The owner decided not to run the trial for now.
+- **Trial setup (same day), later shelved:** an automatic morning snapshot job (`briefing-daily`; now **off by default**, switch on in the Briefing tab) and `BRIEFING_TRIAL.md` (removed) (daily questions and log). The owner decided not to run the trial for now.
 - **Not done:** equity sentiment and FOMC text diff (scope decision pending), CFTC COT, `RightPanel` split, Markets contract-detail route, self-hosted fonts.
 
 ## Session 6 (2026-10-10, HK) — independent verification of the delegated work

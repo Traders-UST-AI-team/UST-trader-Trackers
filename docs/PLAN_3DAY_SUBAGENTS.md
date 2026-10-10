@@ -2,7 +2,7 @@
 
 > 2026-10-09 新一轮实施入口：[UNIFIED_MONITOR_PLAN.md](UNIFIED_MONITOR_PLAN.md)。用户已要求 X 全部延期，新增 indicators、统一 Telegram 来源和资金观察。该新规划及其工具／数据研究为后续 agent 的当前任务；下文保留原三日计划及历史进度。
 
-Written 2026-10-08/09 (HK). Supersedes the 7-day sequence in `docs/archive/WAR_TRACKER_DEMO_PLAN.md` *for scheduling only*; every evidence, labelling and honesty rule in that file and in `SOURCE_RESEARCH_MARITIME_ENERGY.md` still applies and is restated in §2.
+Written 2026-10-08/09 (HK). Supersedes the 7-day sequence in the original demo plan (since removed) *for scheduling only*; every evidence, labelling and honesty rule in that file and in `SOURCE_RESEARCH_MARITIME_ENERGY.md` still applies and is restated in §2.
 
 **Status legend** used throughout: ✅ built and verified in this repo · 🟡 built, partially verified · ⬜ not started · ⛔ attempted and blocked (reason recorded).
 

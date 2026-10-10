@@ -80,4 +80,4 @@ Locations are gazetteer matches in the text (country-level = approximate). Event
 
 ## Plans
 
-`docs/archive/WAR_TRACKER_DEMO_PLAN.md` (original product plan) · `docs/archive/SOURCE_RESEARCH_MARITIME_ENERGY.md` (sources) · **`docs/PLAN_3DAY_SUBAGENTS.md`** (execution plan) · `docs/AGENT_LOG.md` (what was done/verified) · `docs/DEMO_RUNBOOK.md` · `docs/TELEGRAM.md` · `docs/UKMTO_ACCESS.md` · `docs/ACCEPTANCE_REPORT.md` · **`docs/UNIFIED_MONITOR_PLAN.md`** + `docs/INDICATOR_IMPLEMENTATION_REPORT.md` · `docs/RESEARCH_WORKSPACE_IMPLEMENTATION_PLAN.md` + `docs/RESEARCH_WORKSPACE_IMPLEMENTATION_REPORT.md` · `docs/ACCEPTANCE_REPORT_v2.md` · `docs/review/README.md`.
+**`docs/PLAN_3DAY_SUBAGENTS.md`** (execution plan) · `docs/AGENT_LOG.md` (what was done/verified) · `docs/DEMO_RUNBOOK.md` · `docs/TELEGRAM.md` · `docs/UKMTO_ACCESS.md` · `docs/ACCEPTANCE_REPORT.md` · **`docs/UNIFIED_MONITOR_PLAN.md`** + `docs/INDICATOR_IMPLEMENTATION_REPORT.md` · `docs/RESEARCH_WORKSPACE_IMPLEMENTATION_PLAN.md` + `docs/RESEARCH_WORKSPACE_IMPLEMENTATION_REPORT.md` · `docs/ACCEPTANCE_REPORT_v2.md` · `docs/review/README.md`.
