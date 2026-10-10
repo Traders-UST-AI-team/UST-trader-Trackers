@@ -450,3 +450,15 @@ test('read keys: an inline tuple is the same key on every render, so a read cann
   assert.equal(readKeyId('watchlist:3'), 'watchlist:3');
   assert.equal(readKeyId(null), null);
 });
+
+test('sources page: one state per source, most severe first; collection lateness never hides a failure', async () => {
+  const { sourceState } = await import('../src/sourcestate.ts');
+  const h = (o: Record<string, unknown>) => ({ status: 'ok', stale: false, breaker_open_until: null, freshness: { assessment: 'current' }, ...o }) as never;
+  assert.equal(sourceState(h({})), 'ok');
+  assert.equal(sourceState(h({ status: 'error', stale: true })), 'failing');
+  assert.equal(sourceState(h({ breaker_open_until: '2026-10-10T12:00:00Z' })), 'failing', 'paused after repeated failures counts as failing');
+  assert.equal(sourceState(h({ stale: true, freshness: { assessment: 'old' } })), 'old', 'old data outranks a late check');
+  assert.equal(sourceState(h({ stale: true })), 'behind');
+  assert.equal(sourceState(h({ status: 'blocked', stale: true })), 'off');
+  assert.equal(sourceState(h({ status: 'never' })), 'pending');
+});

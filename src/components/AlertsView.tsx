@@ -23,20 +23,26 @@ function RuleRow({ r, readOnly, onSaved }: { r: AlertRuleView; readOnly: boolean
 }
 
 function AlertRow({ a, now, onAck, onOpen }: { a: AlertItem; now: number; onAck: () => void; onOpen?: () => void }) {
+  const event = a.rule_id === 'large_trade' || a.rule_id === 'watched_wallet_trade';
+  const state = event ? null : a.recovered_at ? `back to normal ${ago(a.recovered_at, now)}` : 'ongoing';
   return (
-    <article className={`alertitem ${a.acked_at ? 'acked' : ''}`}>
-      <div className="meta">
-        <span className={`chip sev-${a.severity}`} title="How much attention this asks for — not a direction">{a.severity}</span>
-        <b>{a.title}</b>
-        {a.recovered_at && a.rule_id !== 'large_trade' && a.rule_id !== 'watched_wallet_trade' ? <span className="chip">back to normal {ago(a.recovered_at, now)}</span> : !a.recovered_at && <span className="chip warn">ongoing</span>}
-        {a.occurrences > 1 && <span className="chip" title="Repeated within the rule's cooldown window; kept as one alert">×{a.occurrences}</span>}
-        {a.revised && <span className="chip" title="The input history was revised after the alert opened; the value shown is the latest">revised</span>}
-        <span className="muted small grow" title={`opened ${absTime(a.opened_at)}\nlast seen ${absTime(a.last_seen_at)}`}>{ago(a.opened_at, now)}</span>
+    <li className={`al-item ${a.acked_at ? 'acked' : ''}`}>
+      <i className={`al-sev ${a.severity}`} title={`${a.severity} — how much attention this asks for, not a direction`} />
+      <div className="al-main">
+        <div className="al-line">
+          <b>{a.title}</b>
+          {onOpen ? <button className="linkbtn al-target" onClick={onOpen}>{a.target_label}</button> : <span className="al-target">{a.target_label}</span>}
+        </div>
+        <p className="al-detail">{a.detail}</p>
       </div>
-      <div className="small">{onOpen ? <button className="linkbtn" onClick={onOpen}>{a.target_label}</button> : <span>{a.target_label}</span>}</div>
-      <p className="small">{a.detail}</p>
-      {!a.acked_at && <button className="linkbtn small" onClick={onAck}>Acknowledge</button>}
-    </article>
+      <div className="al-side">
+        <time title={`opened ${absTime(a.opened_at)}\nlast seen ${absTime(a.last_seen_at)}`}>{ago(a.opened_at, now)}</time>
+        {state && <span className={state === 'ongoing' ? 'al-on' : 'muted'}>{state}</span>}
+        {a.occurrences > 1 && <span className="muted" title="Repeated within the rule's cooldown window; kept as one alert">×{a.occurrences}</span>}
+        {a.revised && <span className="muted" title="The input history was revised after the alert opened; the value shown is the latest">revised</span>}
+        {!a.acked_at && <button className="quiet-button" onClick={onAck} title="Acknowledge">✓ Ack</button>}
+      </div>
+    </li>
   );
 }
 
@@ -45,26 +51,31 @@ export function AlertsView({ now, versionKey, onOpenMarket }: { now: number; ver
   const { data: d, error: err, replace } = useResource<AlertsResponse>(versionKey, () => api.alerts(), { label: 'Alerts' });
   if (err) return <main className="alertsview"><div className="banner" role="alert">{err}</div></main>;
   if (!d) return <main className="alertsview"><p className="muted">Loading alerts…</p></main>;
-  const items = d.items.filter((a) => showAcked || !a.acked_at);
+  // Ongoing conditions first; then everything else newest first.
+  const items = d.items.filter((a) => showAcked || !a.acked_at)
+    .sort((x, y) => Number(!!x.recovered_at || x.rule_id === 'large_trade') - Number(!!y.recovered_at || y.rule_id === 'large_trade') || y.opened_at.localeCompare(x.opened_at));
   return (
-    <main className="alertsview">
-      {d.notes.map((n, i) => <p key={i} className="small muted">{n}</p>)}
-      <div className="row2">
-        <b>{d.unacked} unacknowledged</b>
-        <label className="small"><input type="checkbox" checked={showAcked} onChange={(e) => setShowAcked(e.target.checked)} /> show acknowledged</label>
-        {d.unacked > 0 && <button className="linkbtn small grow" onClick={() => api.ackAllAlerts().then(replace)}>Acknowledge all</button>}
+    <main className="alertsview al">
+      <div className="sv-head">
+        <h1>Alerts</h1>
+        <div className="al-bar">
+          <span className={d.unacked ? 'al-count' : 'muted'}>{d.unacked ? `${d.unacked} unacknowledged` : 'Nothing unacknowledged'}</span>
+          {d.unacked > 0 && <button className="quiet-button" onClick={() => api.ackAllAlerts().then(replace)}>Acknowledge all</button>}
+          <label className="small check"><input type="checkbox" checked={showAcked} onChange={(e) => setShowAcked(e.target.checked)} /> show acknowledged</label>
+        </div>
       </div>
-      <div className="alertlist">
-        {items.length === 0 && <p className="muted small">{d.enabled ? 'No alerts. Rules open an alert only on a change from normal to abnormal, so a quiet list is expected most of the time.' : 'Disabled in seed mode.'}</p>}
+      <ul className="al-list">
+        {items.length === 0 && <li className="muted small al-empty">{d.enabled ? 'No alerts. Rules open an alert only on a change from normal to abnormal, so a quiet list is expected most of the time.' : 'Disabled in seed mode.'}</li>}
         {items.map((a) => <AlertRow key={a.id} a={a} now={now} onAck={() => api.ackAlert(a.id).then(replace)} onOpen={a.target_kind === 'market' ? () => onOpenMarket(a.target_id) : undefined} />)}
-      </div>
-      <section className="panel">
-        <h3>Rules <span className="muted small">definition {d.definition_version}</span></h3>
+      </ul>
+      <details className="sv-help">
+        <summary>Rules ({d.rules.filter((r) => r.enabled).length} of {d.rules.length} on) · definition {d.definition_version}</summary>
+        {d.notes.map((n, i) => <p key={i} className="small muted">{n}</p>)}
         <div className="tablewrap"><table className="mini-table">
           <thead><tr><th>Rule</th><th>Fires</th><th>Threshold</th><th>Cooldown</th></tr></thead>
           <tbody>{d.rules.map((r) => <RuleRow key={r.id} r={r} readOnly={d.seed_mode} onSaved={replace} />)}</tbody>
         </table></div>
-      </section>
+      </details>
     </main>
   );
 }
