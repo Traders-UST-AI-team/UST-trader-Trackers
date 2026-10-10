@@ -26,7 +26,11 @@ const fmtTime = (ms: number) => new Date(ms).toLocaleString(undefined, { dateSty
 
 interface Props { onWindow?: (w: { startValue: number; endValue: number } | null) => void; contextKey?: string; zoomRequest?: { kind: 'reset' | 'publication'; sequence: number }; publication?: number | null; points: HistoryPoint[]; markers: EventMarker[]; range: Range; label: string; band?: Band | null; overlays?: Overlay[]; axis?: Axis; trades?: TradeMark[] }
 
-export function ProbChart({ onWindow, contextKey = '', zoomRequest, publication, points, markers, range, label, band, overlays = [], axis = 'auto', trades = [] }: Props) {
+// Stable defaults: a fresh `[]` per render would re-run the drawing effect, which sets state, on every render (an update loop).
+const NO_OVERLAYS: Overlay[] = [];
+const NO_TRADES: TradeMark[] = [];
+
+export function ProbChart({ onWindow, contextKey = '', zoomRequest, publication, points, markers, range, label, band, overlays = NO_OVERLAYS, axis = 'auto', trades = NO_TRADES }: Props) {
   const [viewWindow, setViewWindow] = useState<{ startValue: number; endValue: number } | null>(null);
   const theme = useChartTheme();
   const el = useRef<HTMLDivElement>(null);
@@ -75,7 +79,7 @@ export function ProbChart({ onWindow, contextKey = '', zoomRequest, publication,
     }
     const end = Math.max(spanEnd, ...visible.map((m) => m.ts));
     const window = zoom.current ?? { startValue: min, endValue: end };
-    setViewWindow(window);
+    setViewWindow((prev) => (prev && prev.startValue === window.startValue && prev.endValue === window.endValue ? prev : window));
     const colors = Object.fromEntries(ovData.map((o) => [o.id, css(o.colorVar)]));
 
     c.setOption({
@@ -115,7 +119,8 @@ export function ProbChart({ onWindow, contextKey = '', zoomRequest, publication,
         name: axis === 'fixed' ? 'fixed 0–100%' : 'auto-scaled', nameTextStyle: { color: ink, fontSize: 10, align: 'left' }, nameGap: 8,
         splitLine: { lineStyle: { color: grid, width: 1 } }, axisLine: { show: false }, axisTick: { show: false },
       },
-      dataZoom: [{ type: 'inside', xAxisIndex: 0, filterMode: 'none', ...window }],
+      // A plain wheel scrolls the page; zoom needs ctrl/pinch, and dragging pans. Otherwise the chart traps the reader's scroll.
+      dataZoom: [{ type: 'inside', xAxisIndex: 0, filterMode: 'none', zoomOnMouseWheel: 'ctrl', moveOnMouseWheel: false, moveOnMouseMove: true, ...window }],
       series: [{
         id: 'price', name: label, type: 'line', data, showSymbol: data.length < 3, symbol: 'circle', symbolSize: 8, sampling: 'lttb', z: 3,
         lineStyle: { width: 2, color: line, cap: 'round', join: 'round' }, itemStyle: { color: line, borderColor: surface, borderWidth: 2 },

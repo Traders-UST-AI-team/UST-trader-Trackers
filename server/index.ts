@@ -31,7 +31,7 @@ import { checkRegistrySet } from './research/coverage.ts';
 import { afterCollection } from './research/hooks.ts';
 import { broadcastStreamEvent, registerStreamRoutes, closeAllStreamClients } from './stream.ts';
 import { registerReviewRoutes, REVIEWS_JSON_LIMIT, REVIEWS_LARGE_BODY_PATHS } from './reviews/routes.ts';
-import { MARKET_SELECT, eventView, linksFor, marketView, type EventViewDeps } from './views.ts';
+import { MARKET_SELECT, eventView, linksFor, marketView, withObservedChanges, type EventViewDeps } from './views.ts';
 import { closeReviewsStore, openReviewsStore } from './reviews/db.ts';
 import { seedReviewsDatabase } from './reviews/seed.ts';
 import { startReviewsScheduler } from './reviews/tracker.ts';
@@ -96,13 +96,13 @@ app.get('/api/events/:id', (req, res) => {
 
 app.get('/api/markets', (_req, res) => {
   const rows = db.prepare(`${MARKET_SELECT} WHERE m.is_open = 1 ORDER BY m.volume_24h DESC NULLS LAST`).all() as Row[];
-  res.json(rows.map(marketView));
+  res.json(withObservedChanges(db, rows.map(marketView)));
 });
 
 app.get('/api/markets/:id', (req, res) => {
   const row = db.prepare(`${MARKET_SELECT} WHERE m.condition_id = ?`).get(req.params.id) as Row | undefined;
   if (!row) return res.status(404).json({ error: 'Unknown contract' });
-  res.json(marketView(row));
+  res.json(withObservedChanges(db, [marketView(row)])[0]);
 });
 
 app.get('/api/markets/:id/counterparts', (req, res) => res.json(counterpartsFor(req.params.id)));

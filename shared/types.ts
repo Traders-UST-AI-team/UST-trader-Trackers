@@ -38,6 +38,8 @@ export interface TrackerEvent {
   collected_at: string;
   source_id: string;
   source_name: string;
+  /** Registry kind of the collecting source: news, official, maritime, analysis or social. */
+  source_kind: string;
   /** e.g. "UN OCHA platform; item originates from UNHCR" */
   originating_source: string | null;
   source_affiliation: string;
@@ -103,6 +105,10 @@ export interface Market {
   wide_spread: boolean;
   one_day_change: number | null;
   one_week_change: number | null;
+  /** 24h change used for ranking: the venue's own figure when it reports one, else this tracker's observation from about 24 h ago. */
+  change_24h: number | null;
+  /** 'venue' = reported by the venue; 'observed' = latest observation minus the one nearest 24 h ago (22–26 h window); null = neither available. */
+  change_basis: 'venue' | 'observed' | null;
   volume_total: number | null;
   volume_24h: number | null;
   liquidity: number | null;
@@ -248,6 +254,10 @@ export interface FeedItem {
   /** How the item was first collected: latest poll, Telegram history backfill / gap recovery, a late-found web item, or unknown (collected before this was recorded). */
   collected_via: 'latest' | 'backfill' | 'gap' | 'late_find' | 'unknown';
   revised: boolean; publisher_time_raw: string | null;
+  /** Cached machine-translated English headline for Arabic/Persian web items (null until translated). */
+  title_en: string | null;
+  /** Why the item is low-signal (feature, no market topic, untranslated), or null. See shared/desk.ts lowSignalReason. */
+  low_signal: string | null;
 }
 export interface FeedResponse { items: FeedItem[]; next_cursor: string | null; snapshot_at: string; notes: string[] }
 

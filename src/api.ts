@@ -30,8 +30,9 @@ export const api = {
   activity: () => get<ActivityResponse>('/api/indicators/activity'),
   feed: (qs: string) => get<FeedResponse>(`/api/feed?${qs}`),
   feedNew: (qs: string, since: string) => get<{ count: number; newest_collected_at: string | null }>(`/api/feed/new?${qs}&since=${encodeURIComponent(since)}`),
-  feedUnread: () => get<{ marker: string | null; counts: Record<string, number> }>('/api/feed/unread'),
-  markFeedRead: () => send<{ marker: string | null; counts: Record<string, number> }>('PUT', '/api/feed/read-marker', {}),
+  /** Unread counts; `signal` counts only items the Feed's signal view shows. */
+  feedUnread: (signal = true) => get<{ marker: string | null; counts: Record<string, number> }>(`/api/feed/unread${signal ? '?signal=1' : ''}`),
+  markFeedRead: (signal = true) => send<{ marker: string | null; counts: Record<string, number> }>('PUT', `/api/feed/read-marker${signal ? '?signal=1' : ''}`, {}),
   sources: () => get<SourcesResponse>('/api/sources'),
   setSourceConfig: (id: string, body: { interval_min?: number; request_budget?: number; reset?: true }) => send<SourceConfigView>('PUT', `/api/sources/${encodeURIComponent(id)}/config`, body),
   setTgChannels: (channels: { channel: string; enabled: boolean }[]) => send<{ channels: unknown[] }>('PUT', '/api/telegram/config', { channels }),
@@ -85,7 +86,7 @@ export const api = {
   status: () => get<Status>('/api/status'),
   /** The client's poll: says "I am still here, keep the data fresh" and returns the same status. */
   keepFresh: () => send<Status>('POST', '/api/keep-fresh'),
-  events: (includeFiltered: boolean) => get<TrackerEvent[]>(`/api/events?limit=400${includeFiltered ? '&include_filtered=1' : ''}`),
+  events: (includeFiltered: boolean) => get<TrackerEvent[]>(`/api/events?limit=600${includeFiltered ? '&include_filtered=1' : ''}`),
   counterparts: (id: string) => get<Counterpart[]>(`/api/markets/${encodeURIComponent(id)}/counterparts`),
   tgChannels: () => get<TgChannel[]>('/api/telegram/channels'),
   tgOverview: (days: number, channel?: string) => get<TgOverview>(`/api/telegram/overview?days=${days}${channel ? `&channel=${encodeURIComponent(channel)}` : ''}`),

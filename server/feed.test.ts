@@ -89,6 +89,36 @@ test('feed: "N new" counts genuine arrivals only — backfilled, gap-recovered a
   assert.equal(u.counts.telegram, 1); assert.equal(u.counts.news, 0); assert.equal(u.counts.all, 1);
 });
 
+test('feed signal view: features, untopical and untranslated items are left out; an aggregator duplicate appears once; paging still covers every kept item once', () => {
+  const add = (id: string, src: string, minAgo: number, title: string, topics: string[], lang = 'en', publisher: string | null = null) =>
+    db.prepare(`INSERT INTO events (id, source_id, external_id, published_at, title, summary, raw_url, language, entities, topics, relevant, first_seen_at, last_seen_at, publisher)
+      VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?,?)`).run(id, src, `ext-${id}`, iso(minAgo), title, '', `https://x/${id}`, lang, '[]', JSON.stringify(topics), iso(minAgo), iso(minAgo), publisher);
+  add('sg1', 'gn-hormuz', 7001, 'Tanker struck in Strait of Hormuz', ['shipping'], 'en', 'CNBC');
+  add('sg2', 'gn-iranoil', 7001, 'Tanker struck in Strait of Hormuz', ['shipping'], 'en', 'CNBC');   // same article via a second query feed
+  add('sg3', 'irna-en', 7002, 'In photos: Iran celebrates ancient Mehregan Festival', ['politics']);
+  add('sg4', 'irna-en', 7003, 'Homeland unites people at historic turning points', []);
+  add('sg5', 'irna-fa', 7004, 'بحران هرمز برای ابرنفتکش‌ها', ['energy'], 'fa');
+  add('sg6', 'bbc-me', 7005, 'Houthis attack Riyadh airport', ['security']);
+  const keys: string[] = [];
+  let cursor: string | null = null;
+  do {
+    const r = readFeed({ signal: true, limit: 1, cursor }, false);
+    assert.ok(!('error' in r));
+    keys.push(...r.items.filter((i) => i.key.includes('ext-sg')).map((i) => i.key));
+    assert.ok(r.items.every((i) => i.low_signal === null), 'nothing low-signal on a signal page');
+    cursor = r.next_cursor;
+  } while (cursor);
+  assert.deepEqual(keys.filter((k) => /sg\d/.test(k)).length, 2);
+  assert.ok(keys.includes('web:bbc-me:ext-sg6'));
+  assert.equal(keys.filter((k) => k.includes('sg1') || k.includes('sg2')).length, 1, 'one copy of the CNBC article');
+  const all = readFeed({ limit: 100 }, false);
+  assert.ok(!('error' in all));
+  const byKey = new Map(all.items.map((i) => [i.key, i.low_signal]));
+  assert.equal(byKey.get('web:irna-en:ext-sg3'), 'feature');
+  assert.equal(byKey.get('web:irna-en:ext-sg4'), 'no market topic');
+  assert.equal(byKey.get('web:irna-fa:ext-sg5'), 'untranslated');
+});
+
 test('feed: seed mode explains the missing Telegram data', () => {
   const r = readFeed({ kind: 'telegram' }, true);
   assert.ok(!('error' in r));
