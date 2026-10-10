@@ -5,9 +5,13 @@ export const VERSION_LABEL: Record<string, string> = {
   first_capture: 'first captured', publisher_revision: 'publisher revision', content_changed: 'changed (no revision declared)', unavailable: 'unavailable here (not a confirmed retraction)', restored: 'available again',
 };
 
+const readableRef = (ref: string) => { try { return decodeURIComponent(ref); } catch { return ref; } };
+/** A feed key is platform:source:external-id, and the id is often a whole article URL; the source is enough on screen. */
+const shortRef = (ref: string) => { const [platform, source] = ref.split(':'); return source ? `${source}${platform === 'web' ? '' : ` (${platform})`}` : ref.slice(0, 40); };
+
 /** One line identifying a source item with its separate times. */
 export function SourceLine({ s, fallback }: { s: SourceItemRef | null; fallback?: string }) {
-  if (!s) return <span className="chip warn" title="The original record is no longer in this tracker. Captured versions are kept.">source unavailable{fallback ? `: ${fallback}` : ''}</span>;
+  if (!s) return <span className="chip warn" title={`The original record is no longer in this tracker. Captured versions are kept.${fallback ? `\n${readableRef(fallback)}` : ''}`}>source unavailable{fallback ? ` · ${shortRef(fallback)}` : ''}</span>;
   return (
     <span className="srcline small">
       <b>{s.source_name}</b>{s.viewpoint_label && <span className="chip warn" title={s.viewpoint_label}>viewpoint-labelled</span>}

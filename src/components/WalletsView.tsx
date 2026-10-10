@@ -136,22 +136,19 @@ export function WalletsView({ now, versionKey, onOpenMarket }: { now: number; ve
       <section className="panel">
         <h3>Large trades on pilot markets <span className="muted small">— market tape (taker side, each fill once)</span></h3>
         {d.large_trades.length === 0 ? <p className="small muted">{ro ? 'Not available offline.' : 'No trade has met a screening criterion yet.'}</p> : (
-          <div className="tablewrap"><table className="mini-table">
-            <thead><tr><th>Time</th><th>Market</th><th>Trade</th><th className="num">Shares</th><th className="num">Price</th><th className="num">Notional</th><th>Why listed</th><th>Wallet</th><th /></tr></thead>
-            <tbody>{d.large_trades.map((t) => (
-              <tr key={t.key}>
-                <td className="small" title={`traded ${absTime(t.at)}\ncollected ${absTime(t.first_seen_at)}`}>{ago(t.at, now)}</td>
-                <td className="small mktcell"><button className="linkbtn" onClick={() => onOpenMarket(t.condition_id)}>{t.question}</button></td>
-                <td><span className="chip">{t.side} {t.outcome}</span></td>
-                <td className="num">{t.size_shares.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
-                <td className="num">{(t.price_usdc * 100).toFixed(1)}¢</td>
-                <td className="num"><b>{usdc(t.notional_usdc)}</b></td>
-                <td className="small">{t.criteria.join('; ')}</td>
-                <td className="small"><Who wallet={t.wallet} display_name={t.display_name} pseudonym={t.pseudonym} watched={t.watched} /></td>
-                <td className="small"><a href={POLYGONSCAN(t.tx_hash)} target="_blank" rel="noreferrer">tx ↗</a></td>
-              </tr>
-            ))}</tbody>
-          </table></div>
+          <ol className="lt-rows">
+            {d.large_trades.map((t) => (
+              <li key={t.key} title={`Why listed: ${t.criteria.join('; ')}\ntraded ${absTime(t.at)} · collected ${absTime(t.first_seen_at)}\n${t.size_shares.toLocaleString('en-US', { maximumFractionDigits: 0 })} shares`}>
+                <time>{ago(t.at, now)}</time>
+                <span className="side">{t.side} {t.outcome}</span>
+                <b>{usdc(t.notional_usdc)}</b>
+                <span className="px">@ {(t.price_usdc * 100).toFixed(1)}¢</span>
+                <button className="linkbtn mkt" onClick={() => onOpenMarket(t.condition_id)}>{t.question}</button>
+                <Who wallet={t.wallet} display_name={t.display_name} pseudonym={t.pseudonym} watched={t.watched} />
+                <a href={POLYGONSCAN(t.tx_hash)} target="_blank" rel="noreferrer" aria-label="Transaction on Polygonscan">↗</a>
+              </li>
+            ))}
+          </ol>
         )}
       </section>
 

@@ -256,7 +256,7 @@ blockquote.pre { white-space: pre-wrap; font-size: 13.5px; }
 .claimform, .hypoform { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
 .claimform textarea, .hypoform textarea, .hypoform input, .researchview .row2 input, .researchview .row2 select { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-1); min-width: 0; }
 .researchview .row2 { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; } .researchview .row2 input { flex: 1 1 140px; }
-.researchview button:not(.linkbtn):not(.pinbtn):not(.tabs button):not(.seg button) { border: 1px solid var(--border); background: var(--surface-2); border-radius: 6px; padding: 3px 10px; }
+.researchview :where(button:not(.linkbtn):not(.pinbtn):not(.tabs button):not(.seg button):not(.quiet-button):not(.cite)) { border: 1px solid var(--border); background: var(--surface-2); border-radius: 6px; padding: 3px 10px; }
 .evlist { margin: 4px 0; padding-left: 18px; } .evlist li { margin: 3px 0; }
 .tasks { list-style: none; padding: 0; } .tasks li { padding: 4px 0; border-bottom: 1px dashed var(--border); } .tasks li.resolved, .tasks li.dismissed { opacity: 0.7; }
 .placegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }

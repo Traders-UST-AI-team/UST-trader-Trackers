@@ -34,11 +34,41 @@ export function marketView(r: Row): Market {
   return {
     is_open: Boolean(r.is_open), condition_id: r.condition_id, venue: r.venue, volume_unit: r.volume_unit, open_interest: r.open_interest, event_id: r.event_id, event_title: r.event_title, question: r.question, outcome_label: r.outcome_label,
     price: r.price, quote_basis: r.quote_basis, best_bid: r.best_bid, best_ask: r.best_ask, spread, wide_spread: spread != null && spread > 0.1,
-    one_day_change: r.one_day_change, one_week_change: r.one_week_change, volume_total: r.volume_total, volume_24h: r.volume_24h, liquidity: r.liquidity,
+    one_day_change: r.one_day_change, one_week_change: r.one_week_change,
+    change_24h: r.one_day_change ?? null, change_basis: r.one_day_change == null ? null : 'venue', volume_total: r.volume_total, volume_24h: r.volume_24h, liquidity: r.liquidity,
     end_date: r.end_date, start_date: r.start_date, provider_updated_at: r.provider_updated_at, observed_at: r.observed_at,
     resolution_url: r.url ?? `https://polymarket.com/event/${r.event_slug}`, resolution_text: r.resolution_text, tags: parse<string[]>(r.tags, []),
     history_points: r.history_points ?? 0,
   };
+}
+
+/**
+ * 24h changes from this tracker's own observation series, for contracts whose venue reports none (Kalshi).
+ * The reference is the observation nearest to 24 h before the latest one, and only within 22–26 h of it;
+ * outside that window there is no honest 24h figure and the contract gets none.
+ */
+export function observedChanges(db: DatabaseSync, ids: string[]): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!ids.length) return out;
+  const want = new Set(ids);
+  const latest = db.prepare(`SELECT condition_id, MAX(observed_at) AS at FROM market_obs GROUP BY condition_id`).all() as Row[];
+  const ref = db.prepare(`SELECT price, observed_at FROM market_obs WHERE condition_id = ? AND observed_at BETWEEN ? AND ? AND price IS NOT NULL
+    ORDER BY ABS(julianday(observed_at) - julianday(?)) LIMIT 1`);
+  const cur = db.prepare('SELECT price FROM market_obs WHERE condition_id = ? AND observed_at = ?');
+  for (const l of latest) {
+    if (!want.has(l.condition_id)) continue;
+    const t = Date.parse(l.at), iso = (ms: number) => new Date(ms).toISOString();
+    const r = ref.get(l.condition_id, iso(t - 26 * 3600_000), iso(t - 22 * 3600_000), iso(t - 24 * 3600_000)) as Row | undefined;
+    const c = cur.get(l.condition_id, l.at) as Row | undefined;
+    if (r && c && c.price != null) out.set(l.condition_id, Math.round((c.price - r.price) * 10000) / 10000);
+  }
+  return out;
+}
+
+/** Fills change_24h from the observation series where the venue gives none. */
+export function withObservedChanges(db: DatabaseSync, ms: Market[]): Market[] {
+  const obs = observedChanges(db, ms.filter((m) => m.change_24h == null).map((m) => m.condition_id));
+  return ms.map((m) => (m.change_24h == null && obs.has(m.condition_id) ? { ...m, change_24h: obs.get(m.condition_id)!, change_basis: 'observed' } : m));
 }
 
 export const MARKET_SELECT = `SELECT m.*, (SELECT COUNT(*) FROM price_history h WHERE h.condition_id = m.condition_id) AS history_points FROM markets m`;
@@ -59,7 +89,7 @@ export function eventView(
   return {
     focus_energy_shipping: isEnergyShippingFocus(parse<string[]>(r.topics, []), parse<string[]>(r.entities, []), assets.length > 0 || meta?.kind === 'maritime'),
     event_time: r.time_precision === 'date' ? null : extractEventTime(`${r.title}. ${r.summary}`, r.published_at),
-    id: r.id, timestamp: r.published_at, collected_at: r.first_seen_at, source_id: r.source_id, source_name: r.publisher ? `${r.publisher} (via Google News)` : meta?.name ?? r.source_id,
+    id: r.id, timestamp: r.published_at, collected_at: r.first_seen_at, source_id: r.source_id, source_kind: meta?.kind ?? 'news', source_name: r.publisher ? `${r.publisher} (via Google News)` : meta?.name ?? r.source_id,
     originating_source: r.originating_source, source_affiliation: meta?.affiliation ?? '', source_scope: meta?.scope ?? null, modified_at: r.modified_at ?? null, revision_count: r.revision_count ?? 0, reliability_tier: ((r.tier as Tier | null) ?? meta?.tier ?? 'Tier-3') as Tier,
     claim_status: 'reported', time_precision: r.time_precision ?? 'instant', publisher: r.publisher ?? null, title: r.title,
     feed_key: `web:${r.source_id}:${r.external_id}`,

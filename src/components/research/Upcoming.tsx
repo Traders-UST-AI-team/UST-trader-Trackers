@@ -2,6 +2,8 @@ import { ActionButton } from '../ActionButton';
 import { useDraft } from '../../workspace';
 import { useMemo, useState } from 'react';
 import type { CalendarEntryView } from '../../../shared/research';
+import type { Market } from '../../../shared/types';
+import { pct } from '../../format';
 import { api } from '../../api';
 import { absTime } from '../../format';
 import { ErrorChip, attempt } from './common';
@@ -28,7 +30,45 @@ function CalendarEdit({ entry, onChanged }: { entry: CalendarEntryView; onChange
   </div></details>;
 }
 
-export function Upcoming({ versionKey, onOpenMarket }: { versionKey: string; onOpenMarket: (id: string) => void }) {
+const dayLabel = (date: string, today: string) => {
+  const d = new Date(`${date}T00:00:00Z`), t = new Date(`${today}T00:00:00Z`);
+  const diff = Math.round((d.getTime() - t.getTime()) / 86400_000);
+  const name = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+  return diff === 0 ? `Today · ${name}` : diff === 1 ? `Tomorrow · ${name}` : name;
+};
+const timeOf = (e: CalendarEntryView) => (e.start_utc ? new Date(e.start_utc).toLocaleTimeString(undefined, { timeZone: ZONE, hour: '2-digit', minute: '2-digit', hour12: false }) : 'all day');
+
+/** One agenda line: a manual event, a single contract, or several contracts of one venue event that end on the same day. */
+function AgendaRow({ entries, title, markets, onOpenMarket, onChanged }: { entries: CalendarEntryView[]; title: string; markets: ReadonlyMap<string, Market>; onOpenMarket: (id: string) => void; onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const e = entries[0];
+  const many = entries.length > 1;
+  const m = !many && e.condition_id ? markets.get(e.condition_id) : undefined;
+  const flagged = entries.filter((x) => x.status !== 'scheduled');
+  return (
+    <li className={`ag-row ${open ? 'open' : ''}`}>
+      <button className="ag-head" aria-expanded={open} onClick={() => (many || e.kind === 'manual' || !e.condition_id ? setOpen(!open) : onOpenMarket(e.condition_id))}>
+        <time>{timeOf(e)}</time>
+        <span className="t">{title}{many && <span className="muted"> · {entries.length} contracts</span>}</span>
+        <span className="v">{e.kind === 'manual' ? 'event' : e.venue === 'kalshi' ? 'Kalshi' : 'Polymarket'}</span>
+        <span className="p">{m ? pct(m.price) : ''}</span>
+        {flagged.length > 0 && <span className="chip warn">{flagged[0].status}</span>}
+      </button>
+      {open && <div className="ag-body">
+        {many && <ul>{entries.map((x) => {
+          const mx = x.condition_id ? markets.get(x.condition_id) : undefined;
+          return <li key={x.id}><button className="linkbtn" onClick={() => x.condition_id && onOpenMarket(x.condition_id)}>{x.title}</button><span className="muted">{mx ? pct(mx.price) : ''}</span></li>;
+        })}</ul>}
+        {!many && <p className="small muted">{e.basis}{e.source_url && <> · <a href={e.source_url} target="_blank" rel="noreferrer">source ↗</a></>}</p>}
+        <p className="small muted">{when(e)} · resolution time is separate and may be later.</p>
+        {entries.flatMap((x) => x.revisions).length > 0 && <ul className="small muted">{entries.flatMap((x) => x.revisions.map((r, i) => <li key={`${x.id}${i}`}>{absTime(r.at)}: {r.field} {r.before ?? '—'} → {r.after ?? '—'} ({r.basis})</li>))}</ul>}
+        {!many && e.kind === 'manual' && <CalendarEdit key={e.id} entry={e} onChanged={onChanged} />}
+      </div>}
+    </li>
+  );
+}
+
+export function Upcoming({ versionKey, onOpenMarket, markets = [] }: { versionKey: string; onOpenMarket: (id: string) => void; markets?: Market[] }) {
   const [f, setF] = useDraft('new-calendar-entry', { title: '', date: '', time: '', tz: ZONE, source_url: '', notes: '' });
   // A write failing and a read failing are different events; they used to share one variable.
   const [writeErr, setWriteErr] = useState<string | null>(null);
@@ -37,7 +77,9 @@ export function Upcoming({ versionKey, onOpenMarket }: { versionKey: string; onO
   const [status, setStatus] = useDraft('calendar-status', 'all');
   const [from, setFrom] = useDraft('calendar-from', '');
   const [to, setTo] = useDraft('calendar-to', '');
-  const [viewMode, setViewMode] = useDraft<'list' | 'grid'>('calendar-view-mode', 'grid');
+  const [viewMode, setViewMode] = useDraft<'list' | 'grid'>('calendar-view-mode-v2', 'list');
+  const [adding, setAdding] = useState(false);
+  const marketById = useMemo(() => new Map(markets.map((m) => [m.condition_id, m])), [markets]);
 
   const todayStr = useMemo(() => new Intl.DateTimeFormat('en-CA', { timeZone: ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()), []);
   const defaultYearMonth = todayStr.slice(0, 7);
@@ -112,13 +154,18 @@ export function Upcoming({ versionKey, onOpenMarket }: { versionKey: string; onO
         return { from: new Date(tT - 180 * 86400e3).toISOString(), to: new Date(tT).toISOString() };
       }
     }
+    if (viewMode === 'list') {
+      // The agenda looks forward: today and the next 30 days, unless a range is set.
+      const start = Date.parse(`${todayStr}T00:00:00Z`) - 86400_000;
+      return { from: new Date(start).toISOString(), to: new Date(start + 32 * 86400e3).toISOString() };
+    }
     if (viewMode === 'grid') {
       const start = new Date(Date.UTC(curYear, curMonth - 3, 1)).toISOString();
       const end = new Date(Date.UTC(curYear, curMonth + 3, 0, 23, 59, 59)).toISOString();
       return { from: start, to: end };
     }
     return null;
-  }, [from, to, viewMode, curYear, curMonth]);
+  }, [from, to, viewMode, curYear, curMonth, todayStr]);
 
 
   // One versioned read: the calendar window is part of the key, so a new window re-reads and a
@@ -149,6 +196,22 @@ export function Upcoming({ versionKey, onOpenMarket }: { versionKey: string; onO
     }
     return map;
   }, [shown]);
+
+  // Agenda: by day, and inside a day one line per venue event (a ladder of 12 thresholds is one line).
+  const agenda = useMemo(() => {
+    const days = [...entriesByDate.entries()].filter(([d]) => viewMode !== 'list' || from || d >= todayStr).sort(([a], [b]) => a.localeCompare(b));
+    return days.map(([date, es]) => {
+      const lines = new Map<string, { title: string; entries: CalendarEntryView[] }>();
+      for (const e of [...es].sort((a, b) => (a.start_utc ?? '').localeCompare(b.start_utc ?? ''))) {
+        const m = e.condition_id ? marketById.get(e.condition_id) : undefined;
+        const key = m ? `${m.venue}:${m.event_id}` : e.id;
+        const line = lines.get(key) ?? lines.set(key, { title: m && m.event_title ? m.event_title : e.title, entries: [] }).get(key)!;
+        line.entries.push(e);
+      }
+      for (const l of lines.values()) if (l.entries.length === 1) l.title = l.entries[0].title;
+      return { date, lines: [...lines.values()] };
+    });
+  }, [entriesByDate, marketById, viewMode, from, todayStr]);
 
   const gridDays = useMemo(() => {
     const daysInMonth = new Date(Date.UTC(curYear, curMonth, 0)).getUTCDate();
@@ -225,42 +288,41 @@ export function Upcoming({ versionKey, onOpenMarket }: { versionKey: string; onO
 
   return (
     <div className="upcoming">
-      <p className="small muted">{d?.note} Drafts are saved in this browser. Times are shown in {ZONE}; date-only entries stay whole days in their own zone.</p>
-      <details className="panel small"><summary><b>Add a known event</b> (needs a source)</summary>
-        <div className="row2">
-          <input placeholder="title" value={f.title} onChange={set('title')} />
-          <input type="date" value={f.date} onChange={set('date')} aria-label="Date" />
-          <input type="time" value={f.time} onChange={set('time')} aria-label="Time (optional)" />
-          <input placeholder="IANA zone" value={f.tz} onChange={set('tz')} aria-label="Time zone" />
-          <input placeholder="source URL (required)" value={f.source_url} onChange={set('source_url')} />
-          <ActionButton disabled={!f.title.trim() || !f.date || !f.tz.trim() || !f.source_url.trim()} onClick={() => attempt(() => api.createCalendarEntry({ ...f, time: f.time || null }), setWriteErr).then((r) => { if (r) { setF({ ...f, title: '', date: '', time: '', source_url: '' }); load(); } })}>Add</ActionButton>
+      <div className="ag-bar">
+        <div className="seg" role="group" aria-label="Calendar view">
+          <button className={viewMode === 'list' ? 'on' : ''} onClick={() => setViewMode('list')}>Agenda</button>
+          <button className={viewMode === 'grid' ? 'on' : ''} onClick={() => setViewMode('grid')}>Month</button>
         </div>
-        <ErrorChip e={err} />
-      </details>
+        <div className="search-wrap"><input type="search" aria-label="Search upcoming" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <details className="wire-filters">
+          <summary>Filters{[kind !== 'all', status !== 'all', from, to].filter(Boolean).length ? ` · ${[kind !== 'all', status !== 'all', from, to].filter(Boolean).length}` : ''}</summary>
+          <div className="wire-filter-panel">
+            <select aria-label="Calendar kind" value={kind} onChange={(e) => setKind(e.target.value)}>
+              <option value="all">All kinds</option>
+              <option value="manual">Known events</option>
+              <option value="provider_end_date">Contract end dates</option>
+            </select>
+            <select aria-label="Calendar status" value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="all">All statuses</option>
+              {['scheduled', 'revised', 'postponed', 'cancelled', 'unknown', 'closed'].map((s) => <option key={s}>{s}</option>)}
+            </select>
+            <label className="small">From<input aria-label="Upcoming from date" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+            <label className="small">To<input aria-label="Upcoming to date" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+            <button className="quiet-button" onClick={clearFilters}>Clear filters</button>
+          </div>
+        </details>
+        <button className="quiet-button ag-add" onClick={() => setAdding((v) => !v)}>+ Known event</button>
+      </div>
+      {adding && <div className="ag-addform">
+        <input placeholder="title" value={f.title} onChange={set('title')} />
+        <input type="date" value={f.date} onChange={set('date')} aria-label="Date" />
+        <input type="time" value={f.time} onChange={set('time')} aria-label="Time (optional)" />
+        <input placeholder="IANA zone" value={f.tz} onChange={set('tz')} aria-label="Time zone" />
+        <input placeholder="source URL (required)" value={f.source_url} onChange={set('source_url')} />
+        <ActionButton disabled={!f.title.trim() || !f.date || !f.tz.trim() || !f.source_url.trim()} onClick={() => attempt(() => api.createCalendarEntry({ ...f, time: f.time || null }), setWriteErr).then((r) => { if (r) { setF({ ...f, title: '', date: '', time: '', source_url: '' }); setAdding(false); load(); } })}>Add</ActionButton>
+      </div>}
       <ErrorChip e={err} />
-
-      <div className="calendar-top-bar">
-        <div className="calendar-view-toggle">
-          <button className={viewMode === 'grid' ? 'active' : ''} onClick={() => setViewMode('grid')}>Month grid</button>
-          <button className={viewMode === 'list' ? 'active' : ''} onClick={() => setViewMode('list')}>List view</button>
-        </div>
-      </div>
-
-      <div className="row2 calendarfilters">
-        <input type="search" aria-label="Search upcoming" placeholder="Search upcoming…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select aria-label="Calendar kind" value={kind} onChange={(e) => setKind(e.target.value)}>
-          <option value="all">All kinds</option>
-          <option value="manual">Known events</option>
-          <option value="provider_end_date">Contract end dates</option>
-        </select>
-        <select aria-label="Calendar status" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="all">All statuses</option>
-          {['scheduled', 'revised', 'postponed', 'cancelled', 'unknown', 'closed'].map((s) => <option key={s}>{s}</option>)}
-        </select>
-        <label>From<input aria-label="Upcoming from date" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
-        <label>To<input aria-label="Upcoming to date" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
-        <button onClick={clearFilters}>Clear filters</button>
-      </div>
+      <p className="small muted ag-note">Times in {ZONE}. A contract's end date is the venue's; resolution can be later.</p>
 
       {!d ? <p className="muted">Loading…</p> : (
         <>
@@ -355,23 +417,16 @@ export function Upcoming({ versionKey, onOpenMarket }: { versionKey: string; onO
               )}
             </div>
           ) : (
-            shown.length === 0 ? (
-              <p className="muted small">No stored upcoming entries match these filters.</p>
+            agenda.length === 0 ? (
+              <p className="muted small">Nothing scheduled in this range.</p>
             ) : (
-              <div className="tablewrap">
-                <table className="mini-table">
-                  <thead><tr><th>When</th><th>What</th><th>Kind / basis</th><th>Status</th></tr></thead>
-                  <tbody>{shown.map((e) => (
-                    <tr key={e.id}>
-                      <td className="small">{when(e)}</td>
-                      <td>{e.condition_id ? <ActionButton className="linkbtn" onClick={() => onOpenMarket(e.condition_id!)}>{e.title}</ActionButton> : e.title}{e.venue && <span className={`venue ${e.venue}`}> {e.venue}</span>}</td>
-                      <td className="small muted">{e.kind === 'provider_end_date' ? 'provider end date' : 'manual'} <details><summary>Basis &amp; resolution timing</summary>{e.basis}<p>Resolution time is separate and may be unknown.</p></details>{e.source_url && <a href={e.source_url} target="_blank" rel="noreferrer">source ↗</a>}</td>
-                      <td className="small"><span className={`chip ${e.status === 'scheduled' ? '' : 'warn'}`}>{e.status}</span>
-                        {e.revisions.length > 0 && <details><summary>{e.revisions.length} change(s)</summary><ul>{e.revisions.map((r, i) => <li key={i}>{absTime(r.at)}: {r.field} {r.before ?? '—'} → {r.after ?? '—'} ({r.basis})</li>)}</ul></details>}
-                        <div className="muted">first known {absTime(e.first_known_at)}</div>{e.kind === 'manual' && <CalendarEdit key={e.id} entry={e} onChanged={load} />}</td>
-                    </tr>
-                  ))}</tbody>
-                </table>
+              <div className="agenda">
+                {agenda.map((day) => (
+                  <section key={day.date}>
+                    <h4 className="ag-day">{dayLabel(day.date, todayStr)}</h4>
+                    <ul>{day.lines.map((l) => <AgendaRow key={l.entries[0].id} entries={l.entries} title={l.title} markets={marketById} onOpenMarket={onOpenMarket} onChanged={load} />)}</ul>
+                  </section>
+                ))}
               </div>
             )
           )}

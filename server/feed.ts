@@ -5,6 +5,8 @@ import type { Express } from 'express';
 import { db, kvGet, kvSet } from './db.ts';
 import { NEWS_SOURCES, SOURCE_META } from './registry.ts';
 import type { FeedItem, FeedKind, FeedResponse } from '../shared/types.ts';
+import { lowSignalReason } from '../shared/desk.ts';
+import { cachedHeadlines } from './translation.ts';
 
 type Row = Record<string, any>;
 const parse = <T>(s: string | null | undefined, fb: T): T => { try { return s ? (JSON.parse(s) as T) : fb; } catch { return fb; } };
@@ -13,7 +15,11 @@ export const FEED_KINDS: FeedKind[] = ['news', 'official', 'maritime', 'telegram
 /** A web item first collected more than this long after its stated publication is a late find / backfill, not a new arrival. */
 const LATE_FIND_H = 24;
 
-export interface FeedQuery { kind?: string; source?: string; topic?: string; place?: string; lang?: string; q?: string; includeFiltered?: boolean; limit?: number; cursor?: string | null }
+export interface FeedQuery {
+  kind?: string; source?: string; topic?: string; place?: string; lang?: string; q?: string; includeFiltered?: boolean; limit?: number; cursor?: string | null;
+  /** Leave out low-signal items (shared/desk.ts lowSignalReason) and repeat headlines that reached us through several aggregator feeds. */
+  signal?: boolean;
+}
 
 const encodeCursor = (pub: string, key: string) => Buffer.from(JSON.stringify([pub, key])).toString('base64url');
 function decodeCursor(c: string): [string, string] | null {
@@ -65,7 +71,29 @@ function unionSql(f: FeedQuery): { sql: string; args: (string | number)[] } | { 
 }
 
 const srcMeta = SOURCE_META;
-function toItem(r: Row): FeedItem {
+/** Cached English headlines for the web rows of one page. */
+function headlinesFor(rows: Row[]): Map<string, string> {
+  const web = rows.filter((r) => r.platform === 'web');
+  return cachedHeadlines(db, web.map((r) => ({ id: String(r.ref_id), title: String(r.title ?? ''), summary: String(r.body ?? ''), language: String(r.lang ?? '') })));
+}
+const titleOf = (r: Row) => (r.platform === 'telegram' ? String(r.body ?? '').split('\n')[0] : String(r.title ?? ''));
+const lowSignalOf = (r: Row, heads: Map<string, string>) =>
+  lowSignalReason({ title: titleOf(r), title_en: r.platform === 'web' ? heads.get(String(r.ref_id)) ?? null : null, language: r.lang && r.lang !== 'und' ? r.lang : null, topics: parse<string[]>(r.topics, []) });
+// One article can arrive more than once: an aggregator (Google News) delivers it through several query feeds, and some
+// outlets republish under a new URL. In the signal view only the first copy in feed order is kept.
+/** True when an earlier copy in feed order (newer publication, or same time and a later key) exists, so this one is the repeat. Stateless, so it holds across pages. */
+function repeatOfEarlier(r: Row, f: FeedQuery): boolean {
+  if (r.platform !== 'web') return false;
+  const later = `AND (published_at > ? OR (published_at = ? AND ('web:' || source_id || ':' || external_id) > ?)) ${f.includeFiltered ? '' : 'AND relevant = 1'} LIMIT 1`;
+  if (r.publisher) {
+    if (f.source) return false; // with a source filter the other copy may be filtered away; show this one
+    return !!db.prepare(`SELECT 1 FROM events WHERE publisher = ? AND title = ? ${later}`).get(r.publisher, r.title, r.pub, r.pub, r.key);
+  }
+  return !!db.prepare(`SELECT 1 FROM events WHERE source_id = ? AND publisher IS NULL AND title = ? ${later}`).get(r.src, r.title, r.pub, r.pub, r.key);
+}
+const dupKey = (r: Row) => (r.platform === 'web' ? `${r.publisher ?? r.src}|${r.title}` : null);
+
+function toItem(r: Row, heads: Map<string, string>): FeedItem {
   const isTg = r.platform === 'telegram';
   const meta = isTg ? null : srcMeta.get(r.src);
   const matches = isTg ? (db.prepare('SELECT event_id, similarity, strength FROM tg_matches WHERE channel = ? AND post_id = ? ORDER BY similarity DESC LIMIT 3').all(r.channel, Number(r.ext)) as Row[]).map((m) => ({ event_id: m.event_id as string, strength: m.strength as string, similarity: m.similarity as number })) : [];
@@ -79,6 +107,7 @@ function toItem(r: Row): FeedItem {
     tier: isTg ? null : (r.tier ?? meta?.tier ?? null), viewpoint_label: isTg ? 'Telegram channel — viewpoint-labelled discovery source, not tiered as news' : null,
     forward_origin: r.fwd ?? null, event_id: isTg ? null : r.ref_id, matches, backfill: !!r.backfill, collected_via: r.via, revised: Number(r.revisions) > 0,
     publisher_time_raw: r.ptr ?? null,
+    title_en: isTg ? null : heads.get(String(r.ref_id)) ?? null, low_signal: lowSignalOf(r, heads),
   };
 }
 
@@ -86,36 +115,66 @@ export function readFeed(f: FeedQuery, seed: boolean): FeedResponse | { error: s
   const u = unionSql(f);
   if ('error' in u) return u;
   const limit = Math.min(100, Math.max(1, Math.floor(f.limit ?? 50)));
-  const args = [...u.args];
-  let where = '';
+  let pos: [string, string] | null = null;
   if (f.cursor) {
-    const c = decodeCursor(f.cursor);
-    if (!c) return { error: 'invalid cursor' };
-    where = 'WHERE (pub < ? OR (pub = ? AND key < ?))'; args.push(c[0], c[0], c[1]);
+    pos = decodeCursor(f.cursor);
+    if (!pos) return { error: 'invalid cursor' };
   }
-  const rows = db.prepare(`SELECT * FROM (${u.sql}) ${where} ORDER BY pub DESC, key DESC LIMIT ?`).all(...args, limit + 1) as Row[];
-  const page = rows.slice(0, limit);
+  const batch = (after: [string, string] | null, n: number) =>
+    db.prepare(`SELECT * FROM (${u.sql}) ${after ? 'WHERE (pub < ? OR (pub = ? AND key < ?))' : ''} ORDER BY pub DESC, key DESC LIMIT ?`)
+      .all(...u.args, ...(after ? [after[0], after[0], after[1]] : []), n) as Row[];
+  // Keyset scan: with the signal filter on, rows are read in batches and filtered here until the page is
+  // full (bounded, so one request never walks the whole store). The cursor always marks where scanning stopped.
+  const kept: Row[] = [];
+  const heads = new Map<string, string>();
+  let more = true;
+  for (let round = 0; round < (f.signal ? 8 : 1) && kept.length <= limit && more; round++) {
+    const n = f.signal ? (limit + 1) * 3 : limit + 1;
+    const rows = batch(pos, n);
+    more = rows.length === n;
+    for (const [k, v] of headlinesFor(rows)) heads.set(k, v);
+    for (const r of rows) {
+      pos = [r.pub, r.key];
+      if (f.signal && (lowSignalOf(r, heads) || repeatOfEarlier(r, f))) continue;
+      kept.push(r);
+      if (kept.length > limit) break;
+    }
+  }
+  const page = kept.slice(0, limit);
   const last = page[page.length - 1];
+  const next = kept.length > limit && last ? encodeCursor(last.pub, last.key) : more && pos ? encodeCursor(pos[0], pos[1]) : null;
   const notes: string[] = [];
   if (seed) notes.push('Seed mode: the offline snapshot contains no Telegram posts (excluded by design), so the Telegram tab is empty and nothing is fetched.');
-  return { items: page.map(toItem), next_cursor: rows.length > limit && last ? encodeCursor(last.pub, last.key) : null, snapshot_at: new Date().toISOString(), notes };
+  return { items: page.map((r) => toItem(r, heads)), next_cursor: next, snapshot_at: new Date().toISOString(), notes };
 }
 
 /** Items first collected after `since` that are genuine arrivals (not backfill / late finds), for the "N new items" button. */
 export function countNew(f: FeedQuery, since: string): { count: number; newest_collected_at: string | null } | { error: string } {
   const u = unionSql(f);
   if ('error' in u) return u;
+  if (f.signal) {
+    const rows = db.prepare(`SELECT * FROM (${u.sql}) WHERE seen > ? AND backfill = 0`).all(...u.args, since) as Row[];
+    const heads = headlinesFor(rows), dups = new Set<string>();
+    let count = 0, newest: string | null = null;
+    for (const r of rows) {
+      const d = dupKey(r);
+      if (lowSignalOf(r, heads) || (d && dups.has(d))) continue;
+      if (d) dups.add(d);
+      count++; if (!newest || r.seen > newest) newest = r.seen;
+    }
+    return { count, newest_collected_at: newest };
+  }
   const r = db.prepare(`SELECT COUNT(*) c, MAX(seen) m FROM (${u.sql}) WHERE seen > ? AND backfill = 0`).get(...u.args, since) as { c: number; m: string | null };
   return { count: r.c, newest_collected_at: r.m };
 }
 
 /** Unread = genuine arrivals collected after the persisted read marker, per kind. */
-export function unreadCounts(): { marker: string | null; counts: Record<FeedKind | 'all', number> } {
+export function unreadCounts(signal = false): { marker: string | null; counts: Record<FeedKind | 'all', number> } {
   const marker = kvGet('feed_read_marker');
   const since = marker ?? '1970-01-01T00:00:00.000Z';
   const counts = { all: 0, news: 0, official: 0, maritime: 0, telegram: 0 } as Record<FeedKind | 'all', number>;
   for (const k of FEED_KINDS) {
-    const n = countNew({ kind: k }, since);
+    const n = countNew({ kind: k, signal }, since);
     counts[k] = 'error' in n ? 0 : n.count;
     counts.all += counts[k];
   }
@@ -126,7 +185,7 @@ export function registerFeedRoutes(app: Express, opts: { seed: boolean }) {
   const q = (req: { query: Record<string, unknown> }): FeedQuery => {
     // Filters are short free text; the cursor is opaque and can be long (it embeds an external id such as a full article URL).
     const s = (k: string, max = 120) => (typeof req.query[k] === 'string' && (req.query[k] as string).trim() ? (req.query[k] as string).trim().slice(0, max) : undefined);
-    return { kind: s('kind'), source: s('source'), topic: s('topic'), place: s('place'), lang: s('lang'), q: s('q'), includeFiltered: req.query.include_filtered === '1', limit: Number(req.query.limit ?? 50), cursor: s('cursor', 8192) ?? null };
+    return { kind: s('kind'), source: s('source'), topic: s('topic'), place: s('place'), lang: s('lang'), q: s('q'), includeFiltered: req.query.include_filtered === '1', signal: req.query.signal === '1', limit: Number(req.query.limit ?? 50), cursor: s('cursor', 8192) ?? null };
   };
   app.get('/api/feed', (req, res) => {
     const out = readFeed(q(req), opts.seed);
@@ -140,11 +199,11 @@ export function registerFeedRoutes(app: Express, opts: { seed: boolean }) {
     if ('error' in out) return res.status(400).json(out);
     res.json(out);
   });
-  app.get('/api/feed/unread', (_req, res) => res.json(unreadCounts()));
+  app.get('/api/feed/unread', (req, res) => res.json(unreadCounts(req.query.signal === '1')));
   app.put('/api/feed/read-marker', (req, res) => {
     const at = req.body?.at === undefined ? new Date().toISOString() : typeof req.body.at === 'string' && Number.isFinite(Date.parse(req.body.at)) ? new Date(req.body.at).toISOString() : null;
     if (!at || Date.parse(at) > Date.now() + 60_000) return res.status(400).json({ error: 'at must be an ISO timestamp not in the future (omit for now)' });
     kvSet('feed_read_marker', at);
-    res.json(unreadCounts());
+    res.json(unreadCounts(req.query.signal === '1'));
   });
 }

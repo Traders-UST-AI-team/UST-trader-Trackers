@@ -7,14 +7,14 @@ import { StatusBar } from './components/StatusBar';
 import type { View } from './views';
 import { FeedView } from './components/FeedView';
 import { SourcesView } from './components/SourcesView';
-import { WalletsView } from './components/WalletsView';
+import { MarketsView } from './components/MarketsView';
 import { AlertsView } from './components/AlertsView';
 import { ResearchView } from './components/research/ResearchView';
-import { EventList } from './components/EventList';
+import { Desk, storyContains } from './components/Desk';
+import { rankDesk, type DeskStory } from '../shared/desk';
 import { RightPanel } from './components/RightPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TelegramView } from './components/TelegramView';
-import { WatchlistBar } from './components/WatchlistBar';
 import { ToastContainer } from './components/Toast';
 import { ShortcutsModal } from './components/ShortcutsModal';
 import { SubNav } from './components/SubNav';
@@ -43,11 +43,13 @@ export function App() {
   const [focusedMarket, setFocusedMarket] = useState<Market | null>(null);
   const [markets, setMarkets] = useState<Market[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [showFiltered, setShowFiltered] = useDraft('dashboard-showFiltered', false);
   const [query, setQuery] = useDraft('dashboard-query', '');
-  const [topic, setTopic] = useDraft('dashboard-topic', 'all');
-  const [tier, setTier] = useDraft('dashboard-tier', 'all');
-  const [scope, setScope] = useDraft<'all' | 'focus'>('dashboard-scope', 'all');
+  const [deskHours, setDeskHours] = useDraft('desk-hours', 24);
+  const [seen, setSeen] = useDraft<Record<string, string>>('desk-seen', {});
+  // "New" means updated since the previous visit and not opened since; the first visit marks nothing.
+  const [lastVisit, setLastVisit] = useDraft('desk-visit', 0);
+  const [since] = useState(lastVisit);
+  useEffect(() => { setLastVisit(Date.now()); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [eventId, setEventId] = useState<string | null>(null);
   const [contractId, setContractId] = useState<string | null>(null);
   const [view, setView] = useViewNavigation();
@@ -70,19 +72,19 @@ export function App() {
   const loadData = useCallback(async () => {
     const request = ++dataRequest.current;
     try {
-      const [ev, mk] = await Promise.all([api.events(showFiltered), api.markets()]);
+      const [ev, mk] = await Promise.all([api.events(false), api.markets()]);
       if (request !== dataRequest.current) return;
       setEvents(ev); setMarkets(mk); setError(null);
       if (!initialised.current && ev.length) {
         initialised.current = true;
         const restored = contextFromHash(window.location.hash);
         if (restored.event || restored.market) return;
-        const first = ev.find((e) => e.relevant && e.linked_contracts.length) ?? null;
-        if (first) { setEventId(first.id); setContractId(first.linked_contracts[0].condition_id); navigateContext({ event: first.id, market: first.linked_contracts[0].condition_id }, undefined, true); }
+        const first = rankDesk(ev, new Map(mk.map((m) => [m.condition_id, m])), Date.now()).stories[0]?.lead ?? ev.find((e) => e.relevant && e.linked_contracts.length) ?? null;
+        if (first) { const market = first.linked_contracts[0]?.condition_id; setEventId(first.id); if (market) setContractId(market); navigateContext({ event: first.id, market }, undefined, true); }
         else if (mk.length) { setContractId(mk[0].condition_id); navigateContext({ market: mk[0].condition_id }, undefined, true); }
       }
     } catch (e) { if (request !== dataRequest.current) return; setError(`Could not load data: ${(e as Error).message}. Showing whatever is on screen.`); }
-  }, [showFiltered]);
+  }, []);
 
   // Poll status; reload data whenever a refresh completes.
   useEffect(() => {
@@ -143,7 +145,7 @@ export function App() {
       setFocusedMarket(market); setContractId(id); navigateContext({ market: id }, reveal ? 'dashboard' : undefined); setError(null);
     } catch (e) { if (request === marketRequest.current) setError(`Could not open this contract: ${(e as Error).message}`); }
   };
-  const workspaceMarkets = focusedMarket && !markets.some((m) => m.condition_id === focusedMarket.condition_id) ? [...markets, focusedMarket] : markets;
+  const workspaceMarkets = workspaceMarketsOf(markets, focusedMarket);
   const openDossierView = (id: string) => { setOpenDossier(id); setDossierRequest((n) => n + 1); navigateContext({ dossier: id, tab: 'dossiers' }, 'research'); };
   // Opening an event from the feed: switch to the dashboard and select it (and its first linked contract) if it is loaded.
   const openEvent = async (id: string) => {
@@ -151,39 +153,69 @@ export function App() {
     try {
       const e = events.find((x) => x.id === id) ?? await api.event(id);
       if (request !== eventRequest.current) return;
-      setQuery(''); setTopic('all'); setTier('all'); setScope('all');
+      setQuery('');
       setFocusedEvent(e); onSelect(e); navigateContext({}, 'dashboard'); setError(null);
     } catch (e) { if (request === eventRequest.current) setError(`Could not open this item: ${(e as Error).message}`); }
   };
   const sensorVer = versionKey(status?.versions, SENSOR_SOURCES_IDS);
 
-  const shown = useMemo(() => {
+  const marketById = useMemo(() => new Map(workspaceMarketsOf(markets, focusedMarket).map((m) => [m.condition_id, m])), [markets, focusedMarket]);
+  const desk = useMemo(() => rankDesk(events, marketById, now, deskHours), [events, marketById, now, deskHours]);
+  const results = useMemo(() => {
     const s = query.trim().toLowerCase();
-    return events.filter((e) =>
-      (topic === 'all' || e.topics.includes(topic)) && (tier === 'all' || e.reliability_tier === tier) && (scope === 'all' || e.focus_energy_shipping) &&
-      (!s || `${e.title} ${e.summary} ${e.entities.join(' ')} ${e.location?.name ?? ''}`.toLowerCase().includes(s)));
-  }, [events, query, topic, tier, scope]);
+    if (!s) return null;
+    // One headline per outlet: Google News feeds overlap, so the same article can arrive through several of them.
+    const once = new Set<string>();
+    return events.filter((e) => {
+      if (!`${e.title} ${e.title_en ?? ''} ${e.summary} ${e.entities.join(' ')} ${e.location?.name ?? ''}`.toLowerCase().includes(s)) return false;
+      const k = `${e.publisher ?? e.source_id}|${e.title}`;
+      if (once.has(k)) return false;
+      once.add(k); return true;
+    });
+  }, [events, query]);
+  const shown = results ?? events;
+  // Feed rows say when an item belongs to a story on the Monitor, so the two views read as one desk.
+  const deskMarks = useMemo(() => {
+    const m = new Map<string, string>();
+    let rank = 0;
+    for (const t of desk.stories) {
+      const label = t.band === 'top' ? `Monitor #${++rank}` : 'Monitor';
+      for (const s of [t, ...t.related]) for (const e of s.items) m.set(e.id, label);
+    }
+    return m;
+  }, [desk]);
+  // j/k walk the list as it is shown: the ranked stories, or the search results.
+  const order = useMemo(() => results ?? desk.stories.map((s) => s.lead), [results, desk]);
+  const thread = desk.stories.find((s) => storyContains(s, eventId)) ?? null;
+  const story: DeskStory | null = thread ? (thread.items.some((e) => e.id === eventId) ? thread : thread.related.find((r) => r.items.some((e) => e.id === eventId)) ?? null) : null;
+  const related = thread && story ? [thread, ...thread.related].filter((s) => s !== story) : [];
 
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const selected = events.find((e) => e.id === eventId) ?? (focusedEvent?.id === eventId ? focusedEvent : null);
   const selectContract = (id: string) => { void openMarket(id, false); };
-  const onSelect = useCallback((e: TrackerEvent) => { setMobileDetail(true); ++eventRequest.current; setEventSelection((v) => v + 1); setEventId(e.id); const nextMarket = followMarket && e.linked_contracts.length ? e.linked_contracts[0].condition_id : contractId; navigateContext({ event: e.id, market: nextMarket }); }, [followMarket, contractId]);
+  // Contracts opened from Research or Alerts open on the Markets page, where every contract has a chart.
+  const [marketFocus, setMarketFocus] = useState<{ id: string; request: number } | null>(null);
+  const showInMarkets = (id: string) => { setMarketFocus((f) => ({ id, request: (f?.request ?? 0) + 1 })); setView('wallets'); };
+  const onSelect = useCallback((e: TrackerEvent) => {
+    const s = desk.stories.flatMap((t) => [t, ...t.related]).find((t) => t.items.some((x) => x.id === e.id));
+    if (s) setSeen((prev) => { const live = new Set(desk.stories.flatMap((t) => [t.id, ...t.related.map((r) => r.id)])); const next: Record<string, string> = {}; for (const [k, v] of Object.entries(prev)) if (live.has(k)) next[k] = v; next[s.id] = s.last_at; return next; });
+    setMobileDetail(true); ++eventRequest.current; setEventSelection((v) => v + 1); setEventId(e.id); const nextMarket = followMarket && e.linked_contracts.length ? e.linked_contracts[0].condition_id : contractId; navigateContext({ event: e.id, market: nextMarket }); }, [followMarket, contractId, desk, setSeen]);
 
   const onNextEvent = useCallback(() => {
     if (view !== 'dashboard') setView('dashboard');
-    if (shown.length === 0) return;
-    const curIdx = shown.findIndex((e) => e.id === eventId);
-    const nextIdx = curIdx === -1 || curIdx >= shown.length - 1 ? 0 : curIdx + 1;
-    onSelect(shown[nextIdx]);
-  }, [view, setView, shown, eventId, onSelect]);
+    if (order.length === 0) return;
+    const curIdx = order.findIndex((e, i) => (results ? e.id === eventId : storyContains(desk.stories[i], eventId)));
+    const nextIdx = curIdx === -1 || curIdx >= order.length - 1 ? 0 : curIdx + 1;
+    onSelect(order[nextIdx]);
+  }, [view, setView, order, results, desk, eventId, onSelect]);
 
   const onPrevEvent = useCallback(() => {
     if (view !== 'dashboard') setView('dashboard');
-    if (shown.length === 0) return;
-    const curIdx = shown.findIndex((e) => e.id === eventId);
-    const prevIdx = curIdx <= 0 ? shown.length - 1 : curIdx - 1;
-    onSelect(shown[prevIdx]);
-  }, [view, setView, shown, eventId, onSelect]);
+    if (order.length === 0) return;
+    const curIdx = order.findIndex((e, i) => (results ? e.id === eventId : storyContains(desk.stories[i], eventId)));
+    const prevIdx = curIdx <= 0 ? order.length - 1 : curIdx - 1;
+    onSelect(order[prevIdx]);
+  }, [view, setView, order, results, desk, eventId, onSelect]);
 
   const onFocusSearch = useCallback(() => {
     if (view === 'dashboard') {
@@ -236,25 +268,28 @@ export function App() {
       {connectionError && <div className="banner" role="alert"><b>Tracker disconnected — showing cached data.</b> Last contact {lastContact ? new Date(lastContact).toLocaleString() : 'not established'}. {connectionError}</div>}
       {storageError && <div className="banner" role="alert">Browser storage is unavailable. Keep this page open to preserve unsaved drafts.</div>}
       {error && <div className="banner" role="alert">{error} <button onClick={() => { setRestoreRetry((n) => n + 1); loadData(); }}>Retry workspace</button></div>}
-      {view === 'wallets' && <ErrorBoundary name="Watchlist"><WatchlistBar versionKey={`${marketVer}|${sensorVer}`} now={now} onOpenMarket={openMarket} onOpenSensor={(id) => { setSensorSelection((s) => ({ id, request: (s?.request ?? 0) + 1 })); setView('dashboard'); }} /></ErrorBoundary>}
-      {visited.current.has('feed') && <div className="viewpage col" hidden={view !== 'feed'}><SubNav items={[{ id: 'feed', label: 'All items' }, { id: 'telegram', label: 'Telegram analysis' }]} view={view} setView={setView} /><ErrorBoundary name="Feed"><FeedView now={now} versionKey={allVer} seedMode={status?.mode === 'seed'} onOpenEvent={openEvent} /></ErrorBoundary></div>}
-      {visited.current.has('wallets') && <div className="viewpage" hidden={view !== 'wallets'}><ErrorBoundary name="Wallets"><WalletsView now={now} versionKey={walletVer} onOpenMarket={openMarket} /></ErrorBoundary></div>}
-      {visited.current.has('alerts') && <div className="viewpage col" hidden={view !== 'alerts'}><SubNav items={[{ id: 'sources', label: 'Sources' }, { id: 'alerts', label: 'Alerts', badge: alertCount }]} view={view} setView={setView} /><ErrorBoundary name="Alerts"><AlertsView now={now} versionKey={alertVer} onOpenMarket={openMarket} /></ErrorBoundary></div>}
-      {visited.current.has('research') && <div className="viewpage" hidden={view !== 'research'}><ErrorBoundary name="Research"><ResearchView dossierRequest={dossierRequest} now={now} versionKey={allVer} openDossier={openDossier} onOpenMarket={openMarket} onOpenEvent={openEvent} /></ErrorBoundary></div>}
+      {visited.current.has('feed') && <div className="viewpage col" hidden={view !== 'feed'}><SubNav items={[{ id: 'feed', label: 'All items' }, { id: 'telegram', label: 'Telegram analysis' }]} view={view} setView={setView} /><ErrorBoundary name="Feed"><FeedView now={now} versionKey={allVer} seedMode={status?.mode === 'seed'} onOpenEvent={openEvent} deskMarks={deskMarks} /></ErrorBoundary></div>}
+      {visited.current.has('wallets') && <div className="viewpage" hidden={view !== 'wallets'}><ErrorBoundary name="Markets"><MarketsView now={now} markets={workspaceMarkets} focus={marketFocus} events={events} walletVer={walletVer} onOpenEvent={openEvent}
+        onOpenSensor={(id) => { setSensorSelection((s) => ({ id, request: (s?.request ?? 0) + 1 })); setSimple(false); setView('dashboard'); }} /></ErrorBoundary></div>}
+      {visited.current.has('alerts') && <div className="viewpage col" hidden={view !== 'alerts'}><SubNav items={[{ id: 'sources', label: 'Sources' }, { id: 'alerts', label: 'Alerts', badge: alertCount }]} view={view} setView={setView} /><ErrorBoundary name="Alerts"><AlertsView now={now} versionKey={alertVer} onOpenMarket={showInMarkets} /></ErrorBoundary></div>}
+      {visited.current.has('research') && <div className="viewpage" hidden={view !== 'research'}><ErrorBoundary name="Research"><ResearchView dossierRequest={dossierRequest} now={now} versionKey={allVer} openDossier={openDossier} onOpenMarket={showInMarkets} onOpenEvent={openEvent} markets={workspaceMarkets} /></ErrorBoundary></div>}
       {visited.current.has('sources') && <div className="viewpage col" hidden={view !== 'sources'}><SubNav items={[{ id: 'sources', label: 'Sources' }, { id: 'alerts', label: 'Alerts', badge: alertCount }]} view={view} setView={setView} /><ErrorBoundary name="Sources"><SourcesView now={now} versionKey={allVer} /></ErrorBoundary></div>}
       {visited.current.has('telegram') && <div className="viewpage col" hidden={view !== 'telegram'}><SubNav items={[{ id: 'feed', label: 'All items' }, { id: 'telegram', label: 'Telegram analysis' }]} view={view} setView={setView} /><ErrorBoundary name="Telegram view"><TelegramView seedMode={status?.mode === 'seed'} refreshKey={status?.last_refresh_finished_at ?? null} now={now} onOpenEvent={openEvent} /></ErrorBoundary></div>}
       {visited.current.has('reviews') && <div className="viewpage" hidden={view !== 'reviews'}><ErrorBoundary name="Review Tracker"><ReviewTrackerView /></ErrorBoundary></div>}
       {view === 'dashboard' && !simple && <div className="advanced-return"><button className="quiet-button" onClick={() => { setSimple(true); setMobileDetail(false); }}>← Back to simple monitor</button></div>}
       <main className={`split ${mobileDetail ? 'mobile-detail' : ''}`} hidden={view !== 'dashboard'}>
-        <ErrorBoundary name="Event feed"><EventList events={shown} total={events.length} selectedId={eventId} onSelect={onSelect} now={now}
-          query={query} setQuery={setQuery} topic={topic} setTopic={setTopic} tier={tier} setTier={setTier} scope={scope} setScope={setScope}
-          showFiltered={showFiltered} setShowFiltered={setShowFiltered} markets={workspaceMarkets} /></ErrorBoundary>
+        <ErrorBoundary name="Ranked stories"><Desk desk={desk} hours={deskHours} setHours={setDeskHours} results={results} query={query} setQuery={setQuery}
+          selectedId={eventId} onSelect={onSelect} now={now} seen={seen} since={since} onOpenFeed={() => setView('feed')} /></ErrorBoundary>
         {simple
-          ? <ErrorBoundary name="Item detail"><SimpleDetail onBack={() => setMobileDetail(false)} onAdvanced={() => setSimple(false)} event={selected} markets={workspaceMarkets} contractId={contractId} setContractId={selectContract} onOpenDossier={openDossierView} now={now} /></ErrorBoundary>
+          ? <ErrorBoundary name="Item detail"><SimpleDetail story={story} related={related} onSelect={onSelect} onBack={() => setMobileDetail(false)} onAdvanced={() => setSimple(false)} event={selected} markets={workspaceMarkets} contractId={contractId} setContractId={selectContract} onOpenDossier={openDossierView} now={now} /></ErrorBoundary>
           :         <ErrorBoundary name="Chart & detail panel"><RightPanel followMarket={followMarket} setFollowMarket={setFollowMarket} sensorSelection={sensorSelection} active={view === 'dashboard'} eventSelection={eventSelection} marketVer={marketVer} sensorVer={sensorVer} walletVer={walletVer} onOpenDossier={openDossierView} onSelectEvent={onSelect} mapEvents={shown} markets={workspaceMarkets} events={events} event={selected} contractId={contractId} setContractId={selectContract} now={now} /></ErrorBoundary>}
       </main>
       <ToastContainer />
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
+}
+
+function workspaceMarketsOf(markets: Market[], focused: Market | null): Market[] {
+  return focused && !markets.some((m) => m.condition_id === focused.condition_id) ? [...markets, focused] : markets;
 }
