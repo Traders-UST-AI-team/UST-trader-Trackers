@@ -441,3 +441,12 @@ test('client transport: one error mode for every resource', async () => {
     server.close();
   }
 });
+
+test('read keys: an inline tuple is the same key on every render, so a read cannot loop', async () => {
+  const { readKeyId } = await import('../src/read.ts');
+  // Two renders build two different arrays with the same contents: that must not count as a change.
+  assert.equal(readKeyId(['v1', 0, null]), readKeyId(['v1', 0, null]));
+  assert.notEqual(readKeyId(['v1', 0, null]), readKeyId(['v1', 1, null]));
+  assert.equal(readKeyId('watchlist:3'), 'watchlist:3');
+  assert.equal(readKeyId(null), null);
+});
