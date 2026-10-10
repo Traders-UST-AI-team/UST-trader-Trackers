@@ -1,6 +1,6 @@
 import { EvidencePicker } from './EvidencePicker';
 import { ActionButton } from '../ActionButton';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { HypothesisView } from '../../../shared/research';
 import { api } from '../../api';
 import { absTime } from '../../format';
@@ -8,6 +8,7 @@ import { LocalDateTimeInput } from '../LocalDateTimeInput';
 import { localDateTime, validLocalDateTime, useDraft } from '../../workspace';
 import { navigateContext, useHashContext } from '../../navigation';
 import { ErrorChip, SourceLine, attempt } from './common';
+import { useResource } from '../../read';
 
 const EMPTY = { title: '', statement: '', scope: '', invalidation_conditions: '', rationale: '', alternative: '', next_check_at: '' };
 const editing = (h: HypothesisView) => ({ title: h.title, statement: h.statement, scope: h.scope, invalidation_conditions: h.invalidation_conditions, alternative: h.alternative ?? '', next_check_at: localDateTime(h.next_check_at), expected_version: h.version });
@@ -56,12 +57,14 @@ function HypothesisCard({ h, onChanged }: { h: HypothesisView; onChanged: () => 
 
 export function Hypotheses({ versionKey }: { versionKey: string }) {
   const context = useHashContext();
-  const [list, setList] = useState<HypothesisView[]>([]);
+  // One versioned read (it owns staleness and the read failure); writes report separately.
+  const { data, error: readErr, reload: load } = useResource<HypothesisView[]>(versionKey, () => api.hypotheses(), { label: 'Hypotheses' });
+  const list = data ?? [];
   const [f, setF] = useDraft('new-hypothesis', EMPTY); const [open, setOpen] = useDraft('new-hypothesis-open', false);
   const [q, setQ] = useDraft('hypothesis-search', ''); const [filter, setFilter] = useDraft('hypothesis-filter', 'all');
-  const [err, setErr] = useState<string | null>(null); const requests = useRef(0);
-  const load = () => { const request = ++requests.current; return api.hypotheses().then((rows) => { if (request === requests.current) { setList(rows); setErr(null); } }).catch((e) => { if (request === requests.current) setErr(e.message); }); };
-  useEffect(() => { load(); return () => { ++requests.current; }; }, [versionKey]);
+  // A write failing and a read failing are different events; they used to share one variable.
+  const [writeErr, setWriteErr] = useState<string | null>(null);
+  const err = readErr ?? writeErr;
   const choose = (id: string) => navigateContext({ tab: 'hypotheses', hypothesis: id }, 'research');
   const selected = list.find((h) => h.id === context.hypothesis) ?? (!context.hypothesis ? list[0] : null);
   useEffect(() => { if (!context.hypothesis && list[0]) navigateContext({ hypothesis: list[0].id }, undefined, true); }, [list, context.hypothesis]);
@@ -71,7 +74,7 @@ export function Hypotheses({ versionKey }: { versionKey: string }) {
   return <div className="hypotheses">
     {due.length > 0 && <div className="panel small"><b>Next checks (7 days)</b>: {due.map((h) => <button className="chipbtn" key={h.id} onClick={() => choose(h.id)}>{h.title} — {absTime(h.next_check_at)}</button>)}</div>}
     <ActionButton onClick={() => setOpen(!open)}>{open ? 'Close form' : 'New hypothesis'}</ActionButton>
-    {open && <div className="panel hypoform"><input placeholder="title" value={f.title} onChange={set('title')} /><textarea placeholder="statement (testable)" value={f.statement} onChange={set('statement')} /><input placeholder="scope (place / topic / period)" value={f.scope} onChange={set('scope')} /><textarea placeholder="what would weaken or invalidate it (required)" value={f.invalidation_conditions} onChange={set('invalidation_conditions')} /><input placeholder="alternative explanation (optional)" value={f.alternative} onChange={set('alternative')} /><LocalDateTimeInput label="New hypothesis next check" value={f.next_check_at} onChange={(value) => setF({ ...f, next_check_at: value })} /><ActionButton disabled={(!!f.next_check_at && !validLocalDateTime(f.next_check_at)) || !f.title.trim() || !f.statement.trim() || !f.scope.trim() || !f.invalidation_conditions.trim()} onClick={() => attempt(() => api.createHypothesis({ ...f, next_check_at: f.next_check_at ? new Date(f.next_check_at).toISOString() : null, alternative: f.alternative || null }), setErr).then((r) => { if (r) { setF(EMPTY); setOpen(false); choose(r.id); load(); } })}>Create</ActionButton></div>}
+    {open && <div className="panel hypoform"><input placeholder="title" value={f.title} onChange={set('title')} /><textarea placeholder="statement (testable)" value={f.statement} onChange={set('statement')} /><input placeholder="scope (place / topic / period)" value={f.scope} onChange={set('scope')} /><textarea placeholder="what would weaken or invalidate it (required)" value={f.invalidation_conditions} onChange={set('invalidation_conditions')} /><input placeholder="alternative explanation (optional)" value={f.alternative} onChange={set('alternative')} /><LocalDateTimeInput label="New hypothesis next check" value={f.next_check_at} onChange={(value) => setF({ ...f, next_check_at: value })} /><ActionButton disabled={(!!f.next_check_at && !validLocalDateTime(f.next_check_at)) || !f.title.trim() || !f.statement.trim() || !f.scope.trim() || !f.invalidation_conditions.trim()} onClick={() => attempt(() => api.createHypothesis({ ...f, next_check_at: f.next_check_at ? new Date(f.next_check_at).toISOString() : null, alternative: f.alternative || null }), setWriteErr).then((r) => { if (r) { setF(EMPTY); setOpen(false); choose(r.id); load(); } })}>Create</ActionButton></div>}
     <ErrorChip e={err} /><div className="research-split"><aside className="panel"><input type="search" aria-label="Search hypotheses" placeholder="Search hypotheses…" value={q} onChange={(e) => setQ(e.target.value)} /><select aria-label="Hypothesis queue" value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">All hypotheses</option><option value="active">Active</option><option value="overdue">Overdue</option><option value="changed">Evidence changed</option></select><ul className="dossierlist">{shown.map((h) => <li key={h.id}><button className={selected?.id === h.id ? 'on' : ''} onClick={() => choose(h.id)}><b>{h.title}</b><span className="small">{h.status} · {h.assessment} · {h.review_needed.length} review cues</span></button></li>)}</ul>{!shown.length && <p className="muted">No matching hypotheses.</p>}</aside><section>{selected ? <HypothesisCard key={selected.id} h={selected} onChanged={load} /> : <p className="muted">{context.hypothesis ? 'This hypothesis is unavailable.' : 'Create a hypothesis to start.'}</p>}</section></div>
   </div>;
 }

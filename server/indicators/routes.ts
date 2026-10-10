@@ -1,6 +1,7 @@
 import type { Express } from 'express';
 import { SENSORS } from '../sources/sensors.ts';
-import { DEFS, REGISTRY_VERSION, activityIndicators, eventReaction, getPrefs, getWatchlist, marketIndicators, sensorIndicators, setPrefs, setWatchlist, watchlistCards } from './service.ts';
+import { REGISTRY_VERSION, registryEntries } from './registry.ts';
+import { activityIndicators, eventReaction, getPrefs, getWatchlist, marketIndicators, sensorIndicators, setPrefs, setWatchlist, watchlistCards } from './service.ts';
 
 const num = (v: unknown): number | undefined => { const n = Number(v); return Number.isFinite(n) && String(v).trim() !== '' ? n : undefined; };
 
@@ -13,7 +14,8 @@ function asOfOf(q: unknown): number | undefined | 'bad' {
 }
 
 export function registerIndicatorRoutes(app: Express, opts: { seed: boolean }) {
-  app.get('/api/indicators/registry', (_req, res) => res.json({ definition_version: REGISTRY_VERSION, indicators: DEFS }));
+  // Each entry states the id form to request, so a client can use this instead of its own copy.
+  app.get('/api/indicators/registry', (_req, res) => res.json({ definition_version: REGISTRY_VERSION, indicators: registryEntries() }));
 
   app.get('/api/markets/:id/indicators', (req, res) => {
     const asOf = asOfOf(req.query.asOf);

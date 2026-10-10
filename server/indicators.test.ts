@@ -226,3 +226,90 @@ test('Bollinger 20,2: population standard deviation (denominator 20); raw bands 
   assert.ok((wild.lower[19].value as number) < 0, 'the theoretical lower band is below 0 % and is kept as computed (mean 6.85 %, sd 21.1 pp)');
   assert.equal(wild.excursions, 1);
 });
+
+// ── the indicator vocabulary: what the registry publishes must be what the validator accepts ────
+
+test('indicator registry: every published id form is one the validator actually accepts', async () => {
+  const { registryEntries, parseIds, DEFS } = await import('./indicators/registry.ts');
+
+  const entries = registryEntries();
+  assert.equal(entries.length, DEFS.length);
+
+  for (const entry of entries) {
+    // A parameterised entry must publish the *requestable* form, not the bare family id.
+    if (entry.param) {
+      assert.match(entry.requestable, /\{n\}$/);
+      assert.equal(parseIds([entry.id], entry.kind).bad.includes(entry.id), true, `${entry.id} is published bare but the validator rejects it`);
+      const concrete = entry.requestable.replace('{n}', String(entry.param.default));
+      assert.deepEqual(parseIds([concrete], entry.kind).bad, [], `registry publishes ${entry.requestable} but ${concrete} is rejected`);
+    } else {
+      assert.equal(entry.requestable, entry.id);
+      assert.deepEqual(parseIds([entry.id], entry.kind).bad, [], `registry publishes ${entry.id} but the validator rejects it`);
+    }
+  }
+
+  // The specific case that was broken: the registry advertised `sma`, parseIds always rejected it.
+  const sma = entries.find((e) => e.id === 'sma')!;
+  assert.equal(sma.requestable, 'sma{n}');
+  assert.deepEqual(parseIds(['sma24'], 'market').ok.map((p) => p.n), [24]);
+  assert.deepEqual(parseIds(['sma'], 'market').bad, ['sma']);
+});
+
+test('indicator ids: bounds are enforced, and ids that merely contain digits are not mistaken for a family', async () => {
+  const { parseIds } = await import('./indicators/registry.ts');
+
+  const okOf = (s: string, k: 'market' | 'sensor' = 'market') => parseIds([s], k);
+
+  // rsi14 is a real id, not "family rsi plus 14": matching the parameterised form first would reject it.
+  assert.deepEqual(okOf('rsi14').bad, []);
+  assert.equal(okOf('rsi14').ok[0].def.id, 'rsi14');
+  assert.deepEqual(okOf('change_24h').bad, []);
+  assert.deepEqual(okOf('macd').bad, []);
+
+  // Declared bounds, inclusive.
+  assert.deepEqual(okOf('sma2').ok.map((p) => p.n), [2]);
+  assert.deepEqual(okOf('sma200').ok.map((p) => p.n), [200]);
+  assert.deepEqual(okOf('sma1').bad, ['sma1']);
+  assert.deepEqual(okOf('sma201').bad, ['sma201']);
+  assert.deepEqual(okOf('ema9999').bad, ['ema9999']);
+
+  // The same request string means different indicators per kind: sma7 is a market SMA or a
+  // published-observation SMA, never both.
+  assert.equal(okOf('sma7', 'market').ok[0].def.id, 'sma');
+  assert.equal(okOf('sma7', 'sensor').ok[0].def.id, 'sma_published');
+  assert.deepEqual(okOf('sma70', 'sensor').bad, ['sma70'], 'the sensor bound tops out at 60');
+  assert.deepEqual(okOf('sma_published', 'sensor').bad, ['sma_published'], 'the bare family id is not requestable');
+
+  // Unknown, empty and whitespace entries are handled without throwing.
+  assert.deepEqual(parseIds(['nope', '', '  '], 'market').bad, ['nope']);
+});
+
+test('indicator computation: reachable with plain inputs — no store, no environment, no server', async () => {
+  // This file sets no TRACKER_DB and starts no HTTP server. If the computation still pulled in the
+  // store, importing it here would open the real database as a side effect.
+  const { computeMarketOne, computeSensorOne } = await import('./indicators/compute.ts');
+  const { parseIds } = await import('./indicators/registry.ts');
+
+  const H = 3600, T0 = 1_700_000_000;
+  const market = {
+    id: 'synthetic', venue: 'polymarket', question: 'Synthetic contract', basis: 'polymarket:test', basisKey: 'test',
+    fidelity: 60, raw: Array.from({ length: 30 }, (_, i) => ({ t: T0 + i * H, v: 0.5 })), version: 'v1',
+    spread: null, liquidity: null, price: 0.5, quote_basis: null, observed_at: new Date(T0 * 1000).toISOString(), history_fetched_at: null,
+  };
+  const sma = parseIds(['sma10'], 'market').ok[0];
+  const out = computeMarketOne(market, sma, T0 + 29 * H);
+  assert.equal(out.status, 'ok');
+  assert.equal(out.latest?.value, 50);
+  assert.equal(out.unit, '%');
+  assert.equal(out.input_version, 'v1');
+
+  // A sensor series, likewise from a literal array.
+  const sensor = {
+    id: 'pw:hormuz:total', def: { id: 'pw:hormuz:total', provider: 'IMF PortWatch', intervalMin: 1440, unit: 'transits' },
+    raw: Array.from({ length: 40 }, (_, i) => ({ t: (T0 + i * 86400), v: 100 + i })), version: 'v2', fetched_at: null,
+  };
+  const base = parseIds(['baseline_28d'], 'sensor').ok[0];
+  const sensorOut = computeSensorOne(sensor, base, T0 + 39 * 86400);
+  assert.equal(sensorOut.status, 'ok');
+  assert.ok((sensorOut.latest?.value ?? 0) > 0, 'a rising series is above its trailing mean');
+});

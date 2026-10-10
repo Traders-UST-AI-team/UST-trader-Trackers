@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SourceHealth, Status } from '../../shared/types';
 import { absTime, ago } from '../format';
+import { WORKSPACES, navItemsFor, workspaceOf, type View, type WorkspaceId } from '../views';
 
 const KIND: Record<string, string> = { prediction_market: 'Prediction markets', news: 'News', official: 'Official', maritime: 'Maritime', analysis: 'Analysis', sensor: 'Sensors', social: 'Social (viewpoint-labelled)', wallet: 'Wallet activity' };
 const ORDER = ['prediction_market', 'wallet', 'sensor', 'official', 'maritime', 'news', 'social', 'analysis'];
@@ -20,7 +21,7 @@ function Pill({ s, now }: { s: SourceHealth; now: number }) {
   );
 }
 
-export type View = 'dashboard' | 'feed' | 'telegram' | 'wallets' | 'alerts' | 'research' | 'sources';
+export type { View } from '../views';
 export function StatusBar({ status, onRefresh, now, view, setView, unread, alerts, onOpenShortcuts }: { status: Status | null; onRefresh: () => void; now: number; view: View; setView: (v: View) => void; unread?: number; alerts?: number; onOpenShortcuts?: () => void }) {
   const [theme, setTheme] = useState(() => localStorage.getItem('war-tracker-theme') ?? 'system');
   useEffect(() => {
@@ -40,6 +41,15 @@ export function StatusBar({ status, onRefresh, now, view, setView, unread, alert
   const refreshing = status?.refreshing ?? false;
   const srcs = status?.sources ?? [];
   const count = (c: Cls) => srcs.filter((s) => clsOf(s) === c).length;
+  // Which product we are in comes from the registry, not from a hardcoded option list.
+  const workspace: WorkspaceId = workspaceOf(view);
+  const isReviewMode = workspace === 'reviews';
+  // A sub-view highlights the nav entry that leads to it.
+  const navFor = (id: View) => (id === 'feed' ? ['feed', 'telegram'] : id === 'sources' ? ['sources', 'alerts'] : [id]);
+  const badges: Partial<Record<View, { count: number; title: string }>> = {
+    feed: { count: unread ?? 0, title: 'Unread arrivals (backfill excluded)' },
+    sources: { count: alerts ?? 0, title: 'Unacknowledged in-app alerts' },
+  };
 
   const problems = count('stale') + count('err') + count('never');
   const [menu, setMenu] = useState(false);
@@ -54,23 +64,31 @@ export function StatusBar({ status, onRefresh, now, view, setView, unread, alert
 
   return (
     <header className="topbar slim">
-      <div className="brand"><span className="logo" aria-hidden /><h1>War Tracker</h1></div>
+      <div className="desk-brand">
+        <img className="desk-mark" src="/brand/tracker-icon-v1.png" alt="" width="36" height="36" />
+        <select aria-label="Workspace" value={workspace} onChange={(e) => setView((e.target.value === 'reviews' ? 'reviews' : 'dashboard'))}>
+          {WORKSPACES.map((w) => <option key={w.id} value={w.id}>{w.label}</option>)}
+        </select>
+      </div>
 
-      <nav className="viewnav" aria-label="View">
-          <button className={view === 'dashboard' ? 'on' : ''} onClick={() => setView('dashboard')} title="Items → contracts → price → save (1)">Monitor</button>
-          <button className={view === 'feed' || view === 'telegram' ? 'on' : ''} onClick={() => setView('feed')} title="All sources, including Telegram (2)">Feed{unread ? <span className="badge" title="Unread arrivals (backfill excluded)">{unread > 99 ? '99+' : unread}</span> : null}</button>
-          <button className={view === 'wallets' ? 'on' : ''} onClick={() => setView('wallets')} title="Pilot markets, large trades, watched wallets (3)">Markets</button>
-          <button className={view === 'research' ? 'on' : ''} onClick={() => setView('research')} title="Briefing, dossiers, hypotheses (4)">Research</button>
-          <button className={view === 'sources' || view === 'alerts' ? 'on' : ''} onClick={() => setView('sources')} title="Collection health and alerts (5)">Sources &amp; alerts{alerts ? <span className="badge" title="Unacknowledged in-app alerts">{alerts > 99 ? '99+' : alerts}</span> : null}</button>
-      </nav>
+      {!isReviewMode && (
+        <nav className="viewnav" aria-label="View">
+          {navItemsFor(workspace).map((item) => {
+            const on = navFor(item.id).includes(view);
+            const badge = badges[item.id];
+            return (
+              <button key={item.id} className={on ? 'on' : ''} onClick={() => setView(item.id)} title={item.title}>
+                {item.navLabel}
+                {badge && badge.count ? <span className="badge" title={badge.title}>{badge.count > 99 ? '99+' : badge.count}</span> : null}
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
       <div ref={health} className="sources" aria-label="Source health">
         <button className={`healthsum ${problems ? 'warn' : 'good'}`} onClick={() => setOpen(!open)} aria-expanded={open} title="Show every source">
-          {problems === 0 ? <span className="ok">● all sources OK</span> : <>
-            {count('err') > 0 && <span className="err">✕ {count('err')} failed</span>}
-            {count('stale') > 0 && <span className="stale">◐ {count('stale')} stale</span>}
-            {count('never') > 0 && <span className="never">○ {count('never')} pending</span>}
-          </>}
+          <span>{!status ? 'Connecting…' : status.mode === 'seed' ? '● Demo data' : problems + count('blocked') > 0 ? `◐ ${problems + count('blocked')} source issues` : '● Sources healthy'}</span>
         </button>
         {open && (
           <div className="healthpanel" role="region" aria-label="All sources">

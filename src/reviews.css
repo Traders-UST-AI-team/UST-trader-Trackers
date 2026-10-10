@@ -1,0 +1,63 @@
+/*
+ * Customer Reviews workspace styling.
+ *
+ * This folder was bolted on with 222 inline style objects and no classes at all, so its recurring
+ * shapes — panel, metric, table cell — were retyped everywhere, and it carried two incompatible
+ * notions of "a panel": some used the theme tokens (--surface-2/--border) and others literal dark
+ * hexes, so parts of it ignored the theme toggle entirely.
+ *
+ * The classes below reproduce the values as they were, so nothing changes on screen. The palette is
+ * deliberately literal for now: making this workspace follow the theme like the rest of the app is
+ * a visual decision, and it is now a change in this one file rather than in 222 places.
+ */
+
+/* Panel surface, as the workspace draws it today (always dark, regardless of theme). */
+.rv-panel {
+  background: #121418;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+/* Panel surface where the workspace already used the theme tokens. */
+.rv-panel-themed {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.rv-label {
+  font-size: 12px;
+  color: #8b949e;
+  margin-bottom: 6px;
+}
+
+.rv-metric {
+  font-size: 28px;
+  font-weight: 600;
+  color: #f3f4f6;
+  font-variant-numeric: tabular-nums;
+}
+
+.rv-metric-warn {
+  color: #f87171;
+}
+
+.rv-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.rv-cell-tight {
+  padding: 4px 8px;
+}
+
+.rv-th {
+  padding: 8px 12px;
+}
+
+.rv-th-wide {
+  padding: 10px 14px;
+}

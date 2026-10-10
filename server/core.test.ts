@@ -10,7 +10,9 @@ const { kalshiQuote } = await import('./sources/kalshi.ts');
 const { parseFeed, storeFeed, canonicalUrl, tidySummary, stripDateline } = await import('./sources/rss.ts');
 const { geolocate, extractEntities, extractTopics, isMiddleEastRelevant } = await import('./geo.ts');
 const { db } = await import('./db.ts');
-const { NEWS_SOURCES } = await import('./registry.ts');
+const { NEWS_SOURCES, ALL_SOURCES, SENSOR_SOURCES, WALLET_SOURCES } = await import('./registry.ts');
+const { policyOf } = await import('./sourcehealth.ts');
+const { allSourceDefs, boundsOf } = await import('./sourceconfig.ts');
 const { extractArticleLinks, parseArticle } = await import('./sources/maersk.ts');
 const { storeParsed } = await import('./sources/rss.ts');
 const { matchPair, buildIdf } = await import('./link.ts');
@@ -315,6 +317,64 @@ test('registry integrity: unique ids, every source has tier + affiliation, key s
   assert.ok(NEWS_SOURCES.filter((x) => x.tier === 'Tier-3').every((x) => /state|narrative/i.test(x.affiliation)), 'Tier-3 sources must say why');
 });
 
+test('registry traits: sources carry the facts consumers used to re-derive from id lists', () => {
+  // One list enumerates every source, and every family is in it exactly once.
+  const ids = ALL_SOURCES.map((s) => s.id);
+  assert.equal(new Set(ids).size, ids.length, 'duplicate id across source families');
+  for (const family of [NEWS_SOURCES, SENSOR_SOURCES, WALLET_SOURCES]) {
+    for (const s of family) assert.ok(ids.includes(s.id), `${s.id} is missing from ALL_SOURCES`);
+  }
+  assert.ok(ids.includes('polymarket') && ids.includes('kalshi') && ids.includes('telegram'));
+
+  // The publishers whose silence is normal say so on their own entry. This used to be a set of ids
+  // in sourcehealth.ts that was neither the official sources nor the maritime ones.
+  const sporadic = ALL_SOURCES.filter((s) => s.sporadic).map((s) => s.id).sort();
+  assert.deepEqual(sporadic, ['easa-czib', 'fcdo', 'inbox', 'maersk-advisories', 'ofac', 'ofsi', 'un-news-me', 'un-press']);
+  for (const id of sporadic) assert.equal(policyOf(allSourceDefs().find((d) => d.id === id)!).basis, 'publication');
+
+  // Sources whose rhythm differs from the publication default carry it themselves.
+  const byId = new Map(allSourceDefs().map((d) => [d.id, d]));
+  assert.deepEqual({ basis: policyOf(byId.get('portwatch')!).basis, current: policyOf(byId.get('portwatch')!).current_s }, { basis: 'observation', current: 129600 });
+  assert.equal(policyOf(byId.get('polymarket')!).basis, 'history');
+  assert.equal(policyOf(byId.get('telegram')!).basis, 'post');
+  assert.equal(policyOf(byId.get('bbc-me')!).note, 'newest item publication time');
+  assert.equal(policyOf(byId.get('gcaptain')!).note, 'trade press / advisories');
+  assert.equal(policyOf(byId.get('un-news-me')!).current_s, 604800);
+
+  // A source that reports observations must say where to read them.
+  for (const d of allSourceDefs()) {
+    if (d.freshness?.basis === 'observation' || d.freshness?.basis === 'history' || d.freshness?.basis === 'post') {
+      assert.ok(d.newest, `${d.id} reports ${d.freshness.basis} but carries no newest query`);
+    }
+  }
+  // Placeholder-free queries must not be handed an argument.
+  for (const d of allSourceDefs()) {
+    if (d.newest && !d.newest.sql.includes('?')) assert.deepEqual(d.newest.args, [], `${d.id} takes no placeholder`);
+  }
+});
+
+test('registry traits: bounds resolve for every source, and none is silently unbounded', () => {
+  const defs = allSourceDefs();
+  assert.equal(defs.length, ALL_SOURCES.length);
+  for (const d of defs) {
+    const b = boundsOf(d);
+    assert.ok(b.interval[0] <= d.intervalMin && d.intervalMin <= b.interval[1], `${d.id}: default cadence ${d.intervalMin} is outside its own bounds`);
+    assert.ok(b.budget[0] <= b.budgetDefault && b.budgetDefault <= b.budget[1], `${d.id}: default budget outside its bounds`);
+    assert.ok(b.budgetUnit.length > 0);
+  }
+  // A disabled source keeps its reason, which is what the UI shows as "not connected".
+  const relief = defs.find((d) => d.id === 'reliefweb-me')!;
+  assert.match(relief.disabled ?? '', /406/);
+});
+
+test('registry traits: the official-activity count follows the registry, not a copied list', async () => {
+  const { NEWS_SOURCES: news } = await import('./registry.ts');
+  const officialConnected = news.filter((s) => s.kind === 'official' && s.enabled !== false).map((s) => s.id).sort();
+  // The old literal set included reliefweb-me, which is disabled and can never contribute an item.
+  assert.ok(!officialConnected.includes('reliefweb-me'));
+  assert.deepEqual(officialConnected, ['easa-czib', 'fcdo', 'ofac', 'ofsi', 'un-news-me', 'un-press']);
+});
+
 test('datelines name the desk, not the event: stripped before place extraction', () => {
   assert.equal(stripDateline('Tehran, IRNA – Iranian President Masoud Pezeshkian has met with Putin'), 'Iranian President Masoud Pezeshkian has met with Putin');
   assert.equal(stripDateline('تهران-ایرنا-با شروع فصل مهاجرت پرندگان'), 'با شروع فصل مهاجرت پرندگان');
@@ -418,4 +478,100 @@ test('cross-venue counterparts: candidates carry warnings; verification is expli
   // an explicit human verification flips the flag and carries who verified it
   const v = findCounterparts(poly, [poly, kal, ...filler], [{ polymarket: 'p1', kalshi: 'k1', verified_by: 'Test Reviewer', verified_at: '2026-10-09', rules_note: 'Deadline differs by one day (time zone)' }]);
   assert.equal(v[0].verified, true); assert.equal(v[0].verified_by, 'Test Reviewer');
+});
+
+// ── the API read models, driven without a server ────────────────────────────────────────────────
+
+test('event view: derived fields are computed here, from an injected story lookup', async () => {
+  const { eventView, marketView } = await import('./views.ts');
+  const { SOURCE_META } = await import('./registry.ts');
+  const sourceMeta = SOURCE_META;
+
+  const row = {
+    id: 'evt-1', source_id: 'bbc-me', external_id: 'x1', published_at: '2026-03-04T10:00:00.000Z', first_seen_at: '2026-03-04T10:05:00.000Z',
+    title: 'Tanker traffic slows near the Strait of Hormuz', summary: 'Transit calls fell, shipping data shows.',
+    raw_url: 'https://example.test/a', language: 'en', originating_source: null,
+    location_name: 'Strait of Hormuz', lat: 26.6, lng: 56.25, loc_precision: 'point',
+    entities: JSON.stringify(['Iran']), topics: JSON.stringify(['shipping']), relevant: 1,
+    tier: null, time_precision: 'instant', publisher: null, publisher_time_raw: null,
+    modified_at: null, revision_count: 0,
+  };
+
+  const seen: string[] = [];
+  const view = eventView(row, [{ condition_id: 'c1' } as never], {
+    sourceMeta,
+    // Both store-reading lookups are injected: this test never touches the database or data/assets.json.
+    linkAssets: (text) => { seen.push(text); return []; },
+    storyFor: (id) => { seen.push(id); return { story_id: 's1', size: 1, items: [] } as never; },
+  });
+
+  // Registry metadata reached the view through the injected map.
+  assert.equal(view.source_name, 'BBC News — Middle East');
+  assert.equal(view.reliability_tier, 'Tier-1');
+  assert.match(view.source_affiliation, /licence-fee/);
+  assert.equal(view.feed_key, 'web:bbc-me:x1');
+  assert.equal(view.claim_status, 'reported');
+  assert.deepEqual(view.entities, ['Iran']);
+
+  // Derived fields came from the injected lookups, once each, with the text the rule expects.
+  assert.equal(seen.length, 2);
+  assert.match(seen[0], /^Tanker traffic slows near the Strait of Hormuz\. /);
+  assert.equal(seen[1], 'evt-1');
+  assert.equal(view.story?.story_id, 's1');
+
+  // The asset relation decision is visible in the view rather than hidden behind a file read.
+  const withAsset = eventView(row, [], { sourceMeta, linkAssets: () => [{ asset_id: 'hormuz' } as never], storyFor: () => null });
+  assert.equal(withAsset.focus_energy_shipping, true, 'a curated asset relation makes the item energy/shipping focused');
+
+  // A maritime source is in focus even with no asset relation.
+  const maritime = eventView({ ...row, source_id: 'gcaptain' }, [], { sourceMeta, linkAssets: () => [], storyFor: () => null });
+  assert.equal(maritime.focus_energy_shipping, true);
+
+  // An item with a stated past day has no instant event time.
+  assert.equal(eventView({ ...row, time_precision: 'date' }, [], { sourceMeta, linkAssets: () => [], storyFor: () => null }).event_time, null);
+
+  // A publisher-time note appears only when the feed stated a later time.
+  const noted = eventView({ ...row, publisher_time_raw: '4 Mar 2026 14:00' }, [], { sourceMeta, linkAssets: () => [], storyFor: () => null });
+  assert.match(noted.publisher_time_note ?? '', /no offset is guessed/);
+});
+
+test('market view: spread, quote basis and the wide-spread flag come from the row', async () => {
+  const { marketView } = await import('./views.ts');
+
+  const quoted = marketView({ condition_id: 'c1', is_open: 1, best_bid: 0.4, best_ask: 0.6, tags: '["iran"]' });
+  // The stored spread is the raw difference, unrounded (0.6 - 0.4 is 0.19999999999999996 in IEEE754).
+  // Pinned as-is: this refactor must not change a number the API already served.
+  assert.ok(Math.abs((quoted.spread ?? 0) - 0.2) < 1e-9);
+  assert.equal(quoted.wide_spread, true);
+  assert.deepEqual(quoted.tags, ['iran']);
+  assert.equal(quoted.is_open, true);
+
+  // No two-sided quote: the stored spread is passed through, and nothing is invented.
+  const lastTrade = marketView({ condition_id: 'c2', is_open: 1, best_bid: null, best_ask: null, spread: null });
+  assert.equal(lastTrade.spread, null);
+  assert.equal(lastTrade.wide_spread, false);
+
+  // No url stored: the resolution link falls back to the venue's event page.
+  assert.equal(marketView({ condition_id: 'c3', event_slug: 'slug' }).resolution_url, 'https://polymarket.com/event/slug');
+});
+
+test('status is a read: only an explicit POST can start a collection cycle', async () => {
+  // A structural guard. This cannot be exercised without booting the whole server, and the failure
+  // it prevents is silent: re-mounting the refresh on a GET would make any status poll — a
+  // monitoring probe included — begin fetching from the network.
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+
+  assert.ok(!/app\.use\('\/api\/status'/.test(src), 'the status read path must not carry a side effect');
+  assert.match(src, /app\.post\('\/api\/keep-fresh'/, 'the explicit keep-fresh endpoint is the only trigger');
+
+  // The status route itself returns stored state and nothing else.
+  const statusRoute = src.slice(src.indexOf("app.get('/api/status'"), src.indexOf("app.get('/api/status'") + 200);
+  assert.ok(!/maybeRefresh/.test(statusRoute), 'the status handler must not trigger a refresh');
+
+  // And the client asks for freshness explicitly rather than relying on a GET.
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  assert.match(app, /await api\.keepFresh\(\)/, 'the poll should POST its intent to stay fresh');
+  const api = readFileSync(new URL('../src/api.ts', import.meta.url), 'utf8');
+  assert.match(api, /keepFresh: \(\) => send<Status>\('POST', '\/api\/keep-fresh'\)/);
 });

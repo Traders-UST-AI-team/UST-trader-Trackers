@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import type { CoverageView, HolderGroup, LeaderboardSnapshot, NetTradeValue, WalletDetail, WalletsOverview, WatchedWalletView } from '../../shared/types';
 import { api } from '../api';
+import { useResource } from '../read';
 import { absTime, ago, shortAddr, signed, usdc } from '../format';
 
 const POLYGONSCAN = (tx: string) => `https://polygonscan.com/tx/${tx}`;
@@ -44,8 +45,7 @@ function NetTable({ n }: { n: NetTradeValue }) {
 }
 
 function Holders({ conditionId }: { conditionId: string }) {
-  const [g, setG] = useState<HolderGroup[] | null>(null);
-  useEffect(() => { api.holders(conditionId).then(setG).catch(() => setG([])); }, [conditionId]);
+  const { data: g } = useResource<HolderGroup[]>(conditionId, () => api.holders(conditionId), { label: 'Holder snapshot', quiet: true });
   if (!g) return <p className="small muted">Loading holders…</p>;
   if (!g.length) return <p className="small muted">No holder snapshot yet.</p>;
   return (
@@ -63,8 +63,11 @@ function Holders({ conditionId }: { conditionId: string }) {
 
 function WalletRow({ w, now, onChanged, readOnly }: { w: WatchedWalletView; now: number; onChanged: () => void; readOnly: boolean }) {
   const [open, setOpen] = useState(false);
-  const [d, setD] = useState<WalletDetail | null>(null);
-  useEffect(() => { if (open) api.walletDetail(w.wallet).then(setD).catch(() => setD(null)); }, [open, w.wallet, w.last_activity_at]);
+  const { data: d } = useResource<WalletDetail | null>(
+    open ? `${w.wallet}|${w.last_activity_at}` : null,
+    () => (open ? api.walletDetail(w.wallet) : Promise.resolve(null)),
+    { label: 'Wallet detail', quiet: true },
+  );
   return (
     <>
       <tr>
@@ -116,13 +119,10 @@ function Leaderboard({ s, watchedCount, onWatch, readOnly }: { s: LeaderboardSna
 }
 
 export function WalletsView({ now, versionKey, onOpenMarket }: { now: number; versionKey: string; onOpenMarket: (id: string) => void }) {
-  const [d, setD] = useState<WalletsOverview | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const { data: d, error: err, reload: load } = useResource<WalletsOverview>(versionKey, () => api.wallets(), { label: 'Markets' });
   const [addr, setAddr] = useState(''); const [note, setNote] = useState(''); const [formErr, setFormErr] = useState<string | null>(null);
   const [win, setWin] = useState<'24h' | '7d'>('24h');
   const [openMarket, setOpenMarket] = useState<string | null>(null);
-  const load = () => api.wallets().then((x) => { setD(x); setErr(null); }).catch((e) => setErr((e as Error).message));
-  useEffect(() => { load(); }, [versionKey]);
   const watch = async (wallet: string, rule?: string) => {
     try { await api.watchWallet(wallet, note.trim() || null, rule); setAddr(''); setNote(''); setFormErr(null); load(); } catch (e) { setFormErr((e as Error).message); }
   };

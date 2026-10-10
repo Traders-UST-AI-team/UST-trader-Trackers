@@ -26,10 +26,17 @@ export async function withBudget<T>(sourceId: string, budget: number, fn: () => 
 export const budgetUsed = (): number | null => budgetStore.getStore()?.used ?? null;
 export const budgetLeft = (): number | null => { const b = budgetStore.getStore(); return b ? b.budget - b.used : null; };
 
-export interface FetchOpts { retries?: number; timeoutMs?: number; headers?: Record<string, string> }
+export interface FetchOpts {
+  retries?: number;
+  timeoutMs?: number;
+  headers?: Record<string, string>;
+  /** Transport seam: tests supply a fake instead of reaching the network. Defaults to global fetch. */
+  fetchImpl?: typeof fetch;
+}
 
 export async function fetchText(url: string, opts: FetchOpts = {}): Promise<string> {
-  const { retries = 3, timeoutMs = 15000, headers = {} } = opts;
+  const { retries = 3, timeoutMs = 15000, headers = {}, fetchImpl } = opts;
+  const doFetch = fetchImpl ?? fetch;
   const host = new URL(url).host;
   const gap = process.env.HTTP_MIN_GAP_MS !== undefined ? Number(process.env.HTTP_MIN_GAP_MS) : MIN_GAP_MS[host] ?? MIN_GAP_MS.default; // env override exists for fault-injection tests
   let lastErr: unknown;
@@ -40,7 +47,7 @@ export async function fetchText(url: string, opts: FetchOpts = {}): Promise<stri
     if (wait > 0) await sleep(wait);
     lastHit.set(host, Date.now());
     try {
-      const res = await fetch(url, { headers: { 'user-agent': UA, accept: '*/*', ...headers }, signal: AbortSignal.timeout(timeoutMs) });
+      const res = await doFetch(url, { headers: { 'user-agent': UA, accept: '*/*', ...headers }, signal: AbortSignal.timeout(timeoutMs) });
       if (res.ok) return await res.text();
       // 4xx other than 408/429 are not retryable: do not hammer or try to evade blocks.
       if (res.status !== 429 && res.status !== 408 && res.status < 500) throw new HttpError(res.status, url);

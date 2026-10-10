@@ -2,7 +2,7 @@
 // Deliberately conservative: a cluster means "these items appear to cover the same development", not "the claim is true".
 import { db, tx } from './db.ts';
 import { extractEntities } from './geo.ts';
-import { NEWS_SOURCES } from './registry.ts';
+import { SOURCE_META } from './registry.ts';
 
 const STOP = new Set(('a an the and or but of in on at to for from by with as is are was were be been it its this that these those after before over under into out up down new says say said ' +
   'will would could may might has have had not no yes more most less than also amid about against between during while who whom what when where why how their his her our your us we they he she').split(' '));
@@ -119,7 +119,7 @@ export function storyFor(eventId: string): StoryInfo | null {
   if (!me) return null;
   const rows = db.prepare(`SELECT e.id, e.source_id, e.publisher, e.tier, COALESCE(e.outlet, e.source_id) AS outlet, e.title, e.published_at, e.summary FROM stories s JOIN events e ON e.id = s.event_id WHERE s.story_id = ? ORDER BY e.published_at`).all(me.story_id) as unknown as
     { id: string; source_id: string; publisher: string | null; tier: string | null; outlet: string; title: string; published_at: string; summary: string }[];
-  const meta = new Map(NEWS_SOURCES.map((s) => [s.id, s]));
+  const meta = SOURCE_META;
   const publishers = rows.map((r) => ({ source_id: r.source_id, name: r.publisher ?? meta.get(r.source_id)?.name.split(' — ')[0] ?? r.source_id, tier: r.tier ?? meta.get(r.source_id)?.tier ?? 'Tier-3', event_id: r.id, title: r.title, timestamp: r.published_at }));
   // Independence: each publisher is its own group, except items that cite the same wire/primary source collapse into that source's group.
   const groups = new Set<string>();

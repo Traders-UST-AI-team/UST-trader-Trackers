@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import type { View } from './components/StatusBar';
-const VIEWS: View[] = ['dashboard', 'feed', 'telegram', 'wallets', 'alerts', 'research', 'sources'];
+import { isView, type View } from './views';
 export const RESEARCH_TABS = ['briefing', 'dossiers', 'hypotheses', 'upcoming', 'coverage', 'places', 'vessels'] as const;
 export type ContextKey = 'event' | 'market' | 'tab' | 'dossier' | 'hypothesis';
 export function viewFromHash(hash: string): View {
   const value = hash.replace(/^#/, '').split('?')[0] as View;
-  return VIEWS.includes(value) ? value : 'dashboard';
+  return isView(value) ? value : 'dashboard';
 }
 export function contextFromHash(hash: string): Partial<Record<ContextKey, string>> {
   const params = new URLSearchParams(hash.split('?')[1] ?? '');

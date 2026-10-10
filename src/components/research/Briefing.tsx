@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Briefing as BriefingData, SavedBriefingRow } from '../../../shared/briefing';
 import { api, type BriefingWindowChoice } from '../../api';
 import { absTime } from '../../format';
 import { ErrorChip, attempt } from './common';
+import { useResource } from '../../read';
 
 const WINDOWS: { label: string; w: BriefingWindowChoice }[] = [
   { label: '24 h', w: { hours: 24 } }, { label: '48 h', w: { hours: 48 } }, { label: '7 days', w: { hours: 168 } }, { label: 'Since last saved', w: { since: 'last' } },
 ];
 const when = (iso: string) => `${iso.slice(0, 16).replace('T', ' ')} UTC`;
-const pp1 = (x: number) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(1)} pp`;
 
 /** One bracketed citation that scrolls to its entry in the Sources list (the URL hash is reserved for navigation). */
 function Cite({ n }: { n: number | null }) {
@@ -18,29 +18,33 @@ function Cite({ n }: { n: number | null }) {
 
 export function Briefing({ versionKey, onOpenEvent, onOpenMarket }: { versionKey: string; onOpenEvent: (id: string) => void; onOpenMarket: (id: string) => void }) {
   const [win, setWin] = useState(0);
-  const [data, setData] = useState<BriefingData | null>(null);
   const [viewing, setViewing] = useState<SavedBriefingRow | null>(null);
-  const [saved, setSaved] = useState<SavedBriefingRow[]>([]);
   const [note, setNote] = useState('');
-  const [err, setErr] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const live = useRef(0);
+  const [writeErr, setWriteErr] = useState<string | null>(null);
   const [auto, setAuto] = useState<boolean | null>(null);
   useEffect(() => { api.briefingAuto().then((a) => setAuto(a.enabled)).catch(() => setAuto(null)); }, []);
 
-  const loadSaved = () => api.savedBriefings().then(setSaved).catch(() => { /* list is optional */ });
-  const load = () => {
-    const request = ++live.current;
-    setLoading(true); setViewing(null);
-    api.briefing(WINDOWS[win].w).then((b) => { if (request === live.current) { setData(b); setErr(null); } })
-      .catch((e: Error) => { if (request === live.current) setErr(e.message); })
-      .finally(() => { if (request === live.current) setLoading(false); });
-  };
-  useEffect(() => { load(); }, [win]);
-  useEffect(() => { loadSaved(); }, [versionKey]);
+  // One versioned read. Which briefing is shown (a window, or a saved snapshot) is part of its key,
+  // so switching between them re-reads and an older response cannot land on top of a newer one.
+  const briefing = useResource<BriefingData>(
+    [versionKey, win, viewing?.id ?? null],
+    () => (viewing ? api.savedBriefing(viewing.id) : api.briefing(WINDOWS[win].w)),
+    { label: 'Briefing' },
+  );
+  // The saved list is optional: it stays silent, and its absence is not an error worth interrupting for.
+  const savedList = useResource<SavedBriefingRow[]>(versionKey, () => api.savedBriefings(), { label: 'Saved briefings', quiet: true });
 
-  const openSaved = (s: SavedBriefingRow) => { setLoading(true); api.savedBriefing(s.id).then((b) => { ++live.current; setData(b); setViewing(s); setErr(null); }).catch((e: Error) => setErr(e.message)).finally(() => setLoading(false)); };
-  const save = () => attempt(() => api.saveBriefing(WINDOWS[win].w, note), setErr).then((r) => { if (r) { setNote(''); loadSaved(); } });
+  const data = briefing.data;
+  const saved = savedList.data ?? [];
+  const loading = briefing.state === 'loading';
+  const err = briefing.error ?? writeErr;
+  const loadSaved = savedList.reload;
+  const load = briefing.reload;
+
+  // Selecting a saved snapshot only chooses it; the read above fetches it.
+  const openSaved = (s: SavedBriefingRow) => { setViewing(s); setWriteErr(null); };
+  const showWindow = () => { setViewing(null); briefing.reload(); };
+  const save = () => attempt(() => api.saveBriefing(WINDOWS[win].w, note), setWriteErr).then((r) => { if (r) { setNote(''); loadSaved(); } });
   const mdUrl = viewing ? api.savedBriefingMarkdownUrl(viewing.id) : api.briefingMarkdownUrl(WINDOWS[win].w);
   const b = data;
 
@@ -53,7 +57,7 @@ export function Briefing({ versionKey, onOpenEvent, onOpenMarket }: { versionKey
         </div>
         <div className="briefing-actions">
           <div className="seg" role="radiogroup" aria-label="Window">
-            {WINDOWS.map((x, i) => <button key={x.label} role="radio" aria-checked={win === i && !viewing} className={win === i && !viewing ? 'on' : ''} onClick={() => setWin(i)}>{x.label}</button>)}
+            {WINDOWS.map((x, i) => <button key={x.label} role="radio" aria-checked={win === i && !viewing} className={win === i && !viewing ? 'on' : ''} onClick={() => { setViewing(null); setWin(i); }}>{x.label}</button>)}
           </div>
           <button onClick={load} disabled={loading} title="Rebuild from the latest stored data">Rebuild</button>
           <a className="btnlink" href={mdUrl} download>Download Markdown</a>
@@ -68,7 +72,7 @@ export function Briefing({ versionKey, onOpenEvent, onOpenMarket }: { versionKey
             <h3>{when(b.window.from)} → {when(b.window.to)}</h3>
             <p className="small muted">{b.window.hours} h · window by {b.window.basis} · generated {absTime(b.generated_at)} · {b.version}{viewing ? ` · saved snapshot${viewing.note ? `: ${viewing.note}` : ''}` : ''}</p>
             {b.seed_mode && <p className="banner seed small"><b>DEMO SEED — not live.</b> Built from a saved sample.</p>}
-            {viewing && <p className="small"><button onClick={load}>Back to a fresh briefing</button></p>}
+            {viewing && <p className="small"><button onClick={showWindow}>Back to a fresh briefing</button></p>}
           </header>
 
           <h4>Summary</h4>
@@ -138,7 +142,7 @@ export function Briefing({ versionKey, onOpenEvent, onOpenMarket }: { versionKey
       <div className="briefing-save noprint">
         <h4>Save a snapshot</h4>
         <p className="small muted">A saved briefing is frozen with its citations, so you can compare it with tomorrow's. “Since last saved” starts where the newest snapshot ended.</p>
-        {auto !== null && <label className="small check"><input type="checkbox" checked={auto} onChange={(e) => api.setBriefingAuto(e.target.checked).then((a) => { setAuto(a.enabled); loadSaved(); }).catch((x: Error) => setErr(x.message))} /> Save the last 24 h automatically once each morning (after 07:00, while this server is running)</label>}
+        {auto !== null && <label className="small check"><input type="checkbox" checked={auto} onChange={(e) => api.setBriefingAuto(e.target.checked).then((a) => { setAuto(a.enabled); loadSaved(); }).catch((x: Error) => setWriteErr(x.message))} /> Save the last 24 h automatically once each morning (after 07:00, while this server is running)</label>}
         <div className="row2">
           <input placeholder="Optional note (what you checked)" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
           <button onClick={save} disabled={!!viewing}>Save this briefing</button>

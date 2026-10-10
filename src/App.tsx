@@ -3,7 +3,8 @@ import { useDraft } from './workspace';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Market, Status, TrackerEvent } from '../shared/types';
 import { api, subscribeStream } from './api';
-import { StatusBar, type View } from './components/StatusBar';
+import { StatusBar } from './components/StatusBar';
+import type { View } from './views';
 import { FeedView } from './components/FeedView';
 import { SourcesView } from './components/SourcesView';
 import { WalletsView } from './components/WalletsView';
@@ -20,6 +21,7 @@ import { SubNav } from './components/SubNav';
 import { SimpleDetail } from './components/SimpleDetail';
 import { useGlobalShortcuts } from './shortcuts';
 import { MARKET_SOURCES, SENSOR_SOURCES_IDS, WALLET_SOURCE_IDS, versionKey } from './store';
+import { ReviewTrackerView } from './components/reviews/ReviewTrackerView';
 
 export function App() {
   const context = useHashContext();
@@ -29,6 +31,10 @@ export function App() {
   const [lastContact, setLastContact] = useState<number | null>(null);
   const [storageError, setStorageError] = useState(false);
   const [followMarket, setFollowMarket] = useDraft('follow-market', true);
+  const [mobileDetail, setMobileDetail] = useState(!!context.event);
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 760px)').matches) window.scrollTo({ top: 0 });
+  }, [mobileDetail]);
   const [simple, setSimple] = useDraft('monitor-simple', true);
   const [newsWidth, setNewsWidth] = useDraft('news-width', 25);
   const [chartWidth, setChartWidth] = useDraft('chart-width', 55);
@@ -83,7 +89,9 @@ export function App() {
     let stop = false;
     const tick = async () => {
       try {
-        const s = await api.status();
+        // The poll also asks the server to keep stored data fresh; that is a POST, so a plain
+        // status read (used elsewhere) never triggers collection.
+        const s = await api.keepFresh();
         if (stop) return;
         setStatus(s); setConnectionError(null); setLastContact(Date.now());
         if (statusFailed.current) { statusFailed.current = false; setError(null); setRestoreRetry((n) => n + 1); loadData(); }
@@ -159,7 +167,7 @@ export function App() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const selected = events.find((e) => e.id === eventId) ?? (focusedEvent?.id === eventId ? focusedEvent : null);
   const selectContract = (id: string) => { void openMarket(id, false); };
-  const onSelect = useCallback((e: TrackerEvent) => { ++eventRequest.current; setEventSelection((v) => v + 1); setEventId(e.id); const nextMarket = followMarket && e.linked_contracts.length ? e.linked_contracts[0].condition_id : contractId; navigateContext({ event: e.id, market: nextMarket }); }, [followMarket, contractId]);
+  const onSelect = useCallback((e: TrackerEvent) => { setMobileDetail(true); ++eventRequest.current; setEventSelection((v) => v + 1); setEventId(e.id); const nextMarket = followMarket && e.linked_contracts.length ? e.linked_contracts[0].condition_id : contractId; navigateContext({ event: e.id, market: nextMarket }); }, [followMarket, contractId]);
 
   const onNextEvent = useCallback(() => {
     if (view !== 'dashboard') setView('dashboard');
@@ -223,7 +231,7 @@ export function App() {
     <div className="app" style={{ '--news-width': `${newsWidth}%`, '--chart-share': `${chartWidth}%` } as React.CSSProperties}>
       <ErrorBoundary name="Status bar"><StatusBar status={status} onRefresh={refresh} now={now} view={view} setView={setView} unread={unread} alerts={alertCount} onOpenShortcuts={() => setShortcutsOpen(true)} /></ErrorBoundary>
       {status?.collection_paused && status.mode !== 'seed' && <div className="banner seed small" role="status">Automatic source collection is paused. Stored data remain available; on-demand chart history and translation may still fetch.</div>}
-      {status?.mode === 'seed' && <div className="banner seed" role="status"><b>DEMO SEED — not live.</b> Offline snapshot of real data captured {status.seed_captured_at ? new Date(status.seed_captured_at).toLocaleString() : 'at an unknown time'}. Nothing is being fetched; ages shown are relative to now, so source pills will go STALE as this snapshot ages.</div>}
+      {status?.mode === 'seed' && <div className="banner seed" role="status"><b>Demo workspace</b><span>Offline data{status.seed_captured_at ? ` · captured ${new Date(status.seed_captured_at).toLocaleDateString()}` : ''} · not live</span></div>}
       {status?.refreshing && events.length === 0 && markets.length === 0 && <div className="banner loading" role="status">First data load in progress — fetching prediction markets and news (about a minute). The page fills in automatically.</div>}
       {connectionError && <div className="banner" role="alert"><b>Tracker disconnected — showing cached data.</b> Last contact {lastContact ? new Date(lastContact).toLocaleString() : 'not established'}. {connectionError}</div>}
       {storageError && <div className="banner" role="alert">Browser storage is unavailable. Keep this page open to preserve unsaved drafts.</div>}
@@ -235,12 +243,14 @@ export function App() {
       {visited.current.has('research') && <div className="viewpage" hidden={view !== 'research'}><ErrorBoundary name="Research"><ResearchView dossierRequest={dossierRequest} now={now} versionKey={allVer} openDossier={openDossier} onOpenMarket={openMarket} onOpenEvent={openEvent} /></ErrorBoundary></div>}
       {visited.current.has('sources') && <div className="viewpage col" hidden={view !== 'sources'}><SubNav items={[{ id: 'sources', label: 'Sources' }, { id: 'alerts', label: 'Alerts', badge: alertCount }]} view={view} setView={setView} /><ErrorBoundary name="Sources"><SourcesView now={now} versionKey={allVer} /></ErrorBoundary></div>}
       {visited.current.has('telegram') && <div className="viewpage col" hidden={view !== 'telegram'}><SubNav items={[{ id: 'feed', label: 'All items' }, { id: 'telegram', label: 'Telegram analysis' }]} view={view} setView={setView} /><ErrorBoundary name="Telegram view"><TelegramView seedMode={status?.mode === 'seed'} refreshKey={status?.last_refresh_finished_at ?? null} now={now} onOpenEvent={openEvent} /></ErrorBoundary></div>}
-      <main className="split" hidden={view !== 'dashboard'}>
+      {visited.current.has('reviews') && <div className="viewpage" hidden={view !== 'reviews'}><ErrorBoundary name="Review Tracker"><ReviewTrackerView /></ErrorBoundary></div>}
+      {view === 'dashboard' && !simple && <div className="advanced-return"><button className="quiet-button" onClick={() => { setSimple(true); setMobileDetail(false); }}>← Back to simple monitor</button></div>}
+      <main className={`split ${mobileDetail ? 'mobile-detail' : ''}`} hidden={view !== 'dashboard'}>
         <ErrorBoundary name="Event feed"><EventList events={shown} total={events.length} selectedId={eventId} onSelect={onSelect} now={now}
           query={query} setQuery={setQuery} topic={topic} setTopic={setTopic} tier={tier} setTier={setTier} scope={scope} setScope={setScope}
-          showFiltered={showFiltered} setShowFiltered={setShowFiltered} simple={simple} setSimple={setSimple} markets={workspaceMarkets} /></ErrorBoundary>
+          showFiltered={showFiltered} setShowFiltered={setShowFiltered} markets={workspaceMarkets} /></ErrorBoundary>
         {simple
-          ? <ErrorBoundary name="Item detail"><SimpleDetail event={selected} markets={workspaceMarkets} contractId={contractId} setContractId={selectContract} onOpenDossier={openDossierView} now={now} /></ErrorBoundary>
+          ? <ErrorBoundary name="Item detail"><SimpleDetail onBack={() => setMobileDetail(false)} onAdvanced={() => setSimple(false)} event={selected} markets={workspaceMarkets} contractId={contractId} setContractId={selectContract} onOpenDossier={openDossierView} now={now} /></ErrorBoundary>
           :         <ErrorBoundary name="Chart & detail panel"><RightPanel followMarket={followMarket} setFollowMarket={setFollowMarket} sensorSelection={sensorSelection} active={view === 'dashboard'} eventSelection={eventSelection} marketVer={marketVer} sensorVer={sensorVer} walletVer={walletVer} onOpenDossier={openDossierView} onSelectEvent={onSelect} mapEvents={shown} markets={workspaceMarkets} events={events} event={selected} contractId={contractId} setContractId={selectContract} now={now} /></ErrorBoundary>}
       </main>
       <ToastContainer />

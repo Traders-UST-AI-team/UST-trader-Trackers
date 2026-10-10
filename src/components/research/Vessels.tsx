@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { VesselView } from '../../../shared/maritime';
 import { api } from '../../api';
+import { useResource } from '../../read';
 import { absTime } from '../../format';
 import { ErrorChip, attempt } from './common';
 
@@ -52,13 +53,12 @@ function VesselCard({ v, onChanged }: { v: VesselView; onChanged: () => void }) 
 }
 
 export function Vessels({ versionKey }: { versionKey: string }) {
-  const [dir, setDir] = useState<Directory | null>(null);
-  const [list, setList] = useState<VesselView[]>([]);
   const [f, setF] = useState({ name: '', imo: '', mmsi: '', source_url: '' });
-  const [err, setErr] = useState<string | null>(null);
   const [scan, setScan] = useState<string | null>(null);
-  const load = () => api.vessels().then(setList).catch((e) => setErr((e as Error).message));
-  useEffect(() => { load(); api.maritimeSources().then(setDir).catch(() => { /* directory is optional */ }); }, [versionKey]);
+  const [writeErr, setWriteErr] = useState<string | null>(null);
+  const { data: list, error: readErr, reload: load } = useResource<VesselView[]>(versionKey, () => api.vessels(), { label: 'Vessel watchlist' });
+  const { data: dir } = useResource<Directory>(versionKey, () => api.maritimeSources(), { label: 'Maritime source directory', quiet: true });
+  const err = readErr ?? writeErr;
   return (
     <div className="vessels">
       <section className="panel">
@@ -68,14 +68,14 @@ export function Vessels({ versionKey }: { versionKey: string }) {
           <input placeholder="IMO (optional, 7 digits)" value={f.imo} onChange={(e) => setF({ ...f, imo: e.target.value })} />
           <input placeholder="MMSI (optional, 9 digits)" value={f.mmsi} onChange={(e) => setF({ ...f, mmsi: e.target.value })} />
           <input placeholder="source URL (required)" value={f.source_url} onChange={(e) => setF({ ...f, source_url: e.target.value })} />
-          <button onClick={() => attempt(() => api.createVessel(Object.fromEntries(Object.entries(f).filter(([, v]) => v.trim()))), setErr).then((r) => { if (r) { setF({ name: '', imo: '', mmsi: '', source_url: '' }); load(); } })}>Add vessel</button>
-          <button onClick={() => attempt(() => api.scanMentions(), setErr).then((r) => { if (r) { setScan(`${r.proposed} proposed, ${r.unresolved} unresolved`); load(); } })}>Scan recent news</button>
+          <button onClick={() => attempt(() => api.createVessel(Object.fromEntries(Object.entries(f).filter(([, v]) => v.trim()))), setWriteErr).then((r) => { if (r) { setF({ name: '', imo: '', mmsi: '', source_url: '' }); load(); } })}>Add vessel</button>
+          <button onClick={() => attempt(() => api.scanMentions(), setWriteErr).then((r) => { if (r) { setScan(`${r.proposed} proposed, ${r.unresolved} unresolved`); load(); } })}>Scan recent news</button>
           {scan && <span className="small muted">{scan}</span>}
         </div>
         <ErrorChip e={err} />
-        {list.length === 0 && <p className="small muted">No vessels recorded. Identifiers are never invented — each needs the source you took it from.</p>}
+        {(list ?? []).length === 0 && <p className="small muted">No vessels recorded. Identifiers are never invented — each needs the source you took it from.</p>}
       </section>
-      {list.map((v) => <VesselCard key={`${v.id}-${v.version}-${v.mentions.length}`} v={v} onChanged={load} />)}
+      {(list ?? []).map((v) => <VesselCard key={`${v.id}-${v.version}-${v.mentions.length}`} v={v} onChanged={load} />)}
       {dir && (
         <section className="panel">
           <h3>Maritime sources directory <span className="muted small">researched {dir.researched_at}</span></h3>

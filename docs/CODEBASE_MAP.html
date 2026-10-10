@@ -1,0 +1,1657 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traders Tracker — 代码库结构与设计说明</title>
+<style>
+:root{
+  --bg:#f6f6f3; --surface:#ffffff; --surface-2:#f2f2ee; --surface-3:#eaeae4;
+  --text:#14171a; --text-2:#3e464e; --muted:#6b737b; --border:#dcddd5; --border-2:#c9cabf;
+  --accent:#0a5fc2; --accent-soft:#e6effb; --accent-2:#0a7a3d;
+  --warn:#8a5a00; --warn-soft:#fdf3e0; --bad:#b42318; --bad-soft:#fdeceb;
+  --ok:#0a7a3d; --ok-soft:#e7f5ec; --purple:#6b3fb8; --purple-soft:#f1ebfb;
+  --code-bg:#f3f3ef; --code-fg:#1f2933;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --radius:10px; --shadow:0 1px 2px rgba(16,20,24,.06),0 6px 18px rgba(16,20,24,.05);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0c0f12; --surface:#12161a; --surface-2:#171c21; --surface-3:#1e242a;
+    --text:#e8ebee; --text-2:#aeb6be; --muted:#8a939c; --border:#262d34; --border-2:#333c44;
+    --accent:#6cb4ff; --accent-soft:#12243a; --accent-2:#3fbf7a;
+    --warn:#e8b341; --warn-soft:#2e2513; --bad:#ff8373; --bad-soft:#331a17;
+    --ok:#3fbf7a; --ok-soft:#122a1d; --purple:#c9a8ff; --purple-soft:#221a33;
+    --code-bg:#0f1418; --code-fg:#d7dee5;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0c0f12; --surface:#12161a; --surface-2:#171c21; --surface-3:#1e242a;
+  --text:#e8ebee; --text-2:#aeb6be; --muted:#8a939c; --border:#262d34; --border-2:#333c44;
+  --accent:#6cb4ff; --accent-soft:#12243a; --accent-2:#3fbf7a;
+  --warn:#e8b341; --warn-soft:#2e2513; --bad:#ff8373; --bad-soft:#331a17;
+  --ok:#3fbf7a; --ok-soft:#122a1d; --purple:#c9a8ff; --purple-soft:#221a33;
+  --code-bg:#0f1418; --code-fg:#d7dee5;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.65 var(--sans);
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code,kbd,pre{font-family:var(--mono)}
+code{background:var(--code-bg);color:var(--code-fg);padding:.1em .38em;border-radius:4px;font-size:.87em;word-break:break-word}
+kbd{background:var(--surface-3);border:1px solid var(--border-2);border-bottom-width:2px;border-radius:5px;
+  padding:.05em .4em;font-size:.8em;color:var(--text-2)}
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px 16px;overflow:auto;font-size:12.5px;line-height:1.6;color:var(--code-fg);margin:0}
+
+/* ── layout ── */
+.wrap{display:grid;grid-template-columns:264px minmax(0,1fr);gap:0;max-width:1500px;margin:0 auto}
+nav.side{position:sticky;top:0;height:100vh;overflow-y:auto;padding:22px 16px 40px;
+  border-right:1px solid var(--border);background:var(--surface);scrollbar-width:thin}
+main{padding:0 0 120px;min-width:0}
+.content{max-width:960px;margin:0 auto;padding:0 30px}
+@media (max-width:1040px){
+  .wrap{grid-template-columns:1fr}
+  nav.side{position:static;height:auto;border-right:0;border-bottom:1px solid var(--border);
+    display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:12px 18px}
+  nav.side .sidetitle,nav.side .sidefoot{display:none}
+  nav.side a{padding:4px 9px;border:1px solid var(--border);border-radius:999px;font-size:12.5px}
+  nav.side a.active{border-color:var(--accent)}
+  .content{padding:0 18px}
+}
+
+/* ── sidebar ── */
+.sidetitle{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin:0 0 10px;font-weight:600}
+nav.side ol{list-style:none;margin:0;padding:0;counter-reset:s}
+nav.side li{margin:0}
+nav.side a{display:block;padding:5px 9px;border-radius:6px;color:var(--text-2);font-size:13.4px;line-height:1.35;
+  border-left:2px solid transparent}
+nav.side a:hover{background:var(--surface-2);text-decoration:none;color:var(--text)}
+nav.side a.active{background:var(--accent-soft);color:var(--accent);border-left-color:var(--accent);font-weight:600}
+nav.side .grp{margin-top:14px}
+.sidefoot{margin-top:22px;padding-top:14px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted)}
+.themebtn{background:var(--surface-2);border:1px solid var(--border-2);color:var(--text-2);border-radius:6px;
+  padding:4px 9px;font:inherit;font-size:12px;cursor:pointer;margin-top:8px}
+.themebtn:hover{background:var(--surface-3)}
+
+/* ── hero ── */
+header.hero{padding:54px 0 30px;border-bottom:1px solid var(--border);margin-bottom:34px}
+.eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:12px}
+h1{font-size:clamp(27px,4vw,40px);line-height:1.15;margin:0 0 14px;letter-spacing:-.02em;font-weight:750}
+.lede{font-size:17px;color:var(--text-2);margin:0 0 8px;max-width:74ch}
+.lede em{color:var(--text);font-style:normal;font-weight:600}
+.q{color:var(--muted);font-size:14.5px;margin:16px 0 0;padding-left:14px;border-left:3px solid var(--border-2);max-width:78ch}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(126px,1fr));gap:10px;margin:26px 0 0}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 13px;box-shadow:var(--shadow)}
+.stat b{display:block;font-size:22px;line-height:1.15;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.stat span{display:block;font-size:11.5px;color:var(--muted);margin-top:3px}
+
+/* ── sections ── */
+section{padding:14px 0 6px;scroll-margin-top:16px}
+h2{font-size:23px;margin:44px 0 6px;letter-spacing:-.015em;font-weight:700;padding-bottom:9px;border-bottom:2px solid var(--border)}
+h2 .n{color:var(--muted);font-weight:600;font-size:15px;margin-right:9px;font-variant-numeric:tabular-nums}
+h3{font-size:16.5px;margin:30px 0 8px;font-weight:680;letter-spacing:-.01em}
+h4{font-size:13.5px;margin:20px 0 6px;font-weight:700;color:var(--text-2)}
+p{margin:9px 0}
+ul,ol{margin:9px 0;padding-left:22px}
+li{margin:5px 0}
+li>ul,li>ol{margin:4px 0}
+strong{font-weight:680}
+.small{font-size:13.2px;color:var(--text-2)}
+.muted{color:var(--muted)}
+.lead-in{color:var(--text-2)}
+
+/* ── cards & callouts ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:16px 18px;margin:14px 0;box-shadow:var(--shadow)}
+.card>h3,.card>h4{margin-top:0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin:14px 0}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:11px;margin:14px 0}
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:11px 15px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0;font-size:13.8px}
+.note.warn{border-color:var(--warn);background:var(--warn-soft)}
+.note.bad{border-color:var(--bad);background:var(--bad-soft)}
+.note.ok{border-color:var(--ok);background:var(--ok-soft)}
+.note .t{font-weight:700;display:block;margin-bottom:3px;font-size:13px;letter-spacing:.02em}
+.note.warn .t{color:var(--warn)} .note.bad .t{color:var(--bad)} .note.ok .t{color:var(--ok)}
+.note .t{color:var(--accent)}
+
+/* ── tags ── */
+.tag{display:inline-block;font-size:11px;font-weight:650;letter-spacing:.03em;padding:1.5px 7px;border-radius:999px;
+  border:1px solid var(--border-2);background:var(--surface-2);color:var(--text-2);white-space:nowrap;line-height:1.6}
+.tag.t1{background:var(--ok-soft);border-color:transparent;color:var(--ok)}
+.tag.t2{background:var(--warn-soft);border-color:transparent;color:var(--warn)}
+.tag.t3{background:var(--bad-soft);border-color:transparent;color:var(--bad)}
+.tag.acc{background:var(--accent-soft);border-color:transparent;color:var(--accent)}
+.tag.pur{background:var(--purple-soft);border-color:transparent;color:var(--purple)}
+.tag.dot::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px;vertical-align:1px}
+
+/* ── layers diagram ── */
+.layers{display:flex;flex-direction:column;gap:0;margin:20px 0;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface)}
+.layer{display:grid;grid-template-columns:118px minmax(0,1fr);gap:14px;padding:13px 15px;border-bottom:1px solid var(--border);align-items:start}
+.layer:last-child{border-bottom:0}
+.layer .lname{font-size:12.5px;font-weight:700;color:var(--text);line-height:1.4}
+.layer .lname em{display:block;font-style:normal;font-weight:500;color:var(--muted);font-size:11px;margin-top:2px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12.2px;padding:3px 9px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border)}
+.chip.hi{background:var(--accent-soft);border-color:transparent;color:var(--accent);font-weight:600}
+.chip.gr{background:var(--ok-soft);border-color:transparent;color:var(--ok)}
+.chip.pu{background:var(--purple-soft);border-color:transparent;color:var(--purple)}
+.arrow-row{text-align:center;color:var(--muted);font-size:13px;letter-spacing:.5em;padding:2px 0}
+@media (max-width:640px){.layer{grid-template-columns:1fr;gap:7px}}
+
+/* ── tables ── */
+.tblwrap{overflow-x:auto;margin:14px 0;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.3px}
+th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--border);vertical-align:top}
+th{background:var(--surface-2);font-weight:700;font-size:11.6px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap;position:sticky;top:0}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover{background:var(--surface-2)}
+td code{font-size:12.3px}
+td:first-child{white-space:nowrap}
+.filetable td:nth-child(1){font-family:var(--mono);font-size:12.1px;color:var(--accent);white-space:nowrap}
+.filetable td:nth-child(2){color:var(--text-2)}
+.filetable td:nth-child(3){font-family:var(--mono);font-size:11.6px;color:var(--muted);word-break:break-word}
+
+/* ── filter bar ── */
+.filterbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0 6px;position:sticky;top:0;
+  background:var(--bg);padding:9px 0;z-index:5;border-bottom:1px solid transparent}
+.filterbar input{flex:1 1 220px;min-width:150px;padding:7px 11px;border:1px solid var(--border-2);border-radius:7px;
+  background:var(--surface);color:var(--text);font:inherit;font-size:13.4px}
+.filterbar input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+.fbtn{padding:6px 11px;border:1px solid var(--border-2);border-radius:999px;background:var(--surface);
+  color:var(--text-2);font:inherit;font-size:12.4px;cursor:pointer;white-space:nowrap}
+.fbtn:hover{background:var(--surface-2)}
+.fbtn.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+:root[data-theme="dark"] .fbtn.on{color:#0c0f12}
+.hidden{display:none !important}
+.count{font-size:12px;color:var(--muted);margin-left:auto;font-variant-numeric:tabular-nums}
+
+/* ── details ── */
+details{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);margin:10px 0;overflow:hidden}
+details[open]{box-shadow:var(--shadow)}
+summary{padding:10px 15px;cursor:pointer;font-weight:620;font-size:13.9px;background:var(--surface-2);
+  list-style:none;display:flex;align-items:center;gap:8px}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"▸";color:var(--muted);font-size:11px;transition:transform .15s}
+details[open]>summary::before{transform:rotate(90deg)}
+summary:hover{background:var(--surface-3)}
+details .dbody{padding:12px 16px 15px;border-top:1px solid var(--border)}
+details .dbody>p:first-child{margin-top:0}
+
+/* ── module cards ── */
+.mod{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);margin:16px 0;
+  overflow:hidden;box-shadow:var(--shadow)}
+.mod>.mhead{padding:13px 17px;border-bottom:1px solid var(--border);background:var(--surface-2);
+  display:flex;flex-wrap:wrap;gap:9px;align-items:baseline}
+.mod>.mhead .mt{font-size:16px;font-weight:700;letter-spacing:-.01em}
+.mod>.mhead .mm{font-size:12.3px;color:var(--muted);font-family:var(--mono)}
+.mod>.mbody{padding:13px 17px 16px}
+.mod .mbody p:first-child{margin-top:0}
+.kv{display:grid;grid-template-columns:104px minmax(0,1fr);gap:5px 12px;font-size:13.3px;margin-top:10px}
+.kv dt{color:var(--muted);font-weight:650;font-size:12.2px;letter-spacing:.02em;padding-top:1px}
+.kv dd{margin:0}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12.7px;margin:10px 0}
+.flow .step{background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-family:var(--mono);font-size:12px}
+.flow .sep{color:var(--muted)}
+
+/* ── tree ── */
+pre.tree{font-size:12.4px;line-height:1.72;border-color:var(--border-2)}
+pre.tree b{color:var(--accent);font-weight:650}
+pre.tree i{color:var(--muted);font-style:normal}
+pre.tree u{color:var(--purple);text-decoration:none;font-weight:600}
+
+/* ── misc ── */
+.pill-list{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+hr{border:0;border-top:1px solid var(--border);margin:30px 0}
+.footer{margin-top:60px;padding-top:22px;border-top:1px solid var(--border);font-size:12.6px;color:var(--muted)}
+.toc-top{position:fixed;right:20px;bottom:20px;width:40px;height:40px;border-radius:50%;background:var(--surface);
+  border:1px solid var(--border-2);box-shadow:var(--shadow);cursor:pointer;font-size:16px;color:var(--text-2);z-index:30}
+@media print{
+  nav.side,.toc-top,.filterbar,.themebtn{display:none}
+  .wrap{grid-template-columns:1fr}
+  body{background:#fff;font-size:11pt}
+  details{border:0}details .dbody{display:block!important}
+  summary{background:none}
+  section{break-inside:avoid}
+  h2{break-after:avoid}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="side" aria-label="目录">
+  <p class="sidetitle">目录</p>
+  <ol id="toc">
+    <li><a href="#overview">01 · 一分钟概览</a></li>
+    <li><a href="#tree">02 · 仓库结构</a></li>
+    <li><a href="#arch">03 · 架构分层</a></li>
+    <li><a href="#pipeline">04 · 采集与调度管线</a></li>
+    <li><a href="#data">05 · 数据模型 (SQLite)</a></li>
+    <li><a href="#modules">06 · 功能模块</a></li>
+    <li><a href="#api">07 · HTTP API 全表</a></li>
+    <li><a href="#shared">08 · 共享领域模型</a></li>
+    <li><a href="#frontend">09 · 前端设计</a></li>
+    <li><a href="#files">10 · 文件索引 (可搜索)</a></li>
+    <li><a href="#quality">11 · 工程与质量保障</a></li>
+    <li><a href="#principles">12 · 设计原则与不变量</a></li>
+    <li><a href="#risks">13 · 已知限制与风险</a></li>
+    <li><a href="#start">14 · 快速上手</a></li>
+  </ol>
+  <div class="sidefoot">
+    <div>结构性数字基于 <code>3c8fdcc</code></div>
+    <div style="margin-top:4px">生成于 2026-10-10 代码通读</div>
+    <button class="themebtn" id="themeBtn" type="button">🌗 切换主题</button>
+  </div>
+</nav>
+
+<main>
+<div class="content">
+
+<header class="hero">
+  <div class="eyebrow">Codebase Map · 代码库结构与设计说明</div>
+  <h1>Traders Tracker</h1>
+  <p class="lede">
+    一个<em>本地运行的“证据与溯源”研究工作台</em>。它把<em>实时预测市场合约</em>（Polymarket / Kalshi）
+    与<em>经过规范化的新闻、官方通告、海事告警、传感器序列</em>并排放在同一页，
+    并严格维护一条链路：<b>某件事发生了 → 它牵动哪些合约 → 价格发生了什么（时间上巧合，不是因果）→ 连同出处一起存进档案</b>。
+  </p>
+  <p class="q">
+    <b>它不是什么：</b>不是交易终端，不是行情图表竞品，也不是事实核查引擎。<br>
+    事件是 <code>reported</code>（“被报道”）的声明；事件↔合约的连线是<b>相关性指针</b>；价格上下文是<b>时间巧合，非因果</b>。<br>
+    项目里最值得学的一点就是：它把“我不能断言什么”写进了类型、数据库约束、API 返回值和 UI 文案里。
+  </p>
+  <div class="stats">
+    <div class="stat"><b>16,120</b><span>行 TS / TSX @HEAD</span></div>
+    <div class="stat"><b>81</b><span>server 文件 @HEAD</span></div>
+    <div class="stat"><b>51</b><span>src 客户端文件 @HEAD</span></div>
+    <div class="stat"><b>6</b><span>shared 契约文件 @HEAD</span></div>
+    <div class="stat"><b>95</b><span>路由注册 / 77 路径</span></div>
+    <div class="stat"><b>42</b><span>受监控数据源</span></div>
+    <div class="stat"><b>151</b><span>测试（全部通过）</span></div>
+    <div class="stat"><b>29</b><span>验收标准</span></div>
+  </div>
+  <p class="small" style="margin:12px 0 0;color:var(--muted)">
+    带 <code>@HEAD</code> 的数字由 <code>git ls-tree</code> / <code>git show</code> 在提交 <code>3c8fdcc</code> 上统计，因此<b>不受工作树并发改动影响、可复现</b>；其余数字（95 处路由注册、42 个源、151 个测试、29 条验收）来自本机实测。当前工作树因为正被并发修改，实际文件数更多——见下方提示。
+  </p>
+</header>
+
+<!-- ══════════════════ 01 ══════════════════ -->
+<section id="overview">
+<h2><span class="n">01</span>一分钟概览</h2>
+
+<p class="lead-in">这是一个 <b>单 package、双运行时</b> 的项目：一个 Node/Express 进程既做数据采集与 API 服务，在开发模式下又内置 Vite 中间件来托管前端。前后端共享 <code>shared/</code> 里的 TypeScript 类型，没有代码生成、没有 ORM、没有状态管理库、没有 CSS 框架。</p>
+
+<div class="grid2">
+  <div class="card">
+    <h4>技术栈</h4>
+    <ul class="small" style="margin-bottom:0">
+      <li><b>运行时</b>：Node ≥ 22.13（实测 Node 26），用内置 <code>node:sqlite</code>，无原生编译依赖</li>
+      <li><b>服务端</b>：Express 5、<code>tsx</code> 直跑 TS、SSE 推送</li>
+      <li><b>数据库</b>：单文件 SQLite（WAL 模式），无 ORM</li>
+      <li><b>前端</b>：React 19 + Vite 8，哈希路由，无 router 库</li>
+      <li><b>可视化</b>：ECharts 6（图表）、Leaflet + world-atlas（地图，无瓦片服务器）、Cytoscape（实体网络图）</li>
+      <li><b>解析</b>：<code>fast-xml-parser</code>（RSS）、<code>node-html-parser</code>（HTML 抓取）</li>
+      <li><b>语言</b>：TypeScript 7，全量 <code>strict</code></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>一句话说明每个目录</h4>
+    <ul class="small" style="margin-bottom:0">
+      <li><code>server/</code> — 采集器、调度、SQLite、分析规则、95 处路由注册</li>
+      <li><code>src/</code> — React 单页应用：7 个目的地视图</li>
+      <li><code>shared/</code> — 前后端共用的类型/纯函数（指标数学、简报结构、研究契约）</li>
+      <li><code>scripts/</code> — CLI：验收矩阵、源可达性探测、评审套件、重放、重分析</li>
+      <li><code>data/</code> — SQLite 库、assets.json、source_registry.json、收件箱（git-ignored）</li>
+      <li><code>docs/</code> — 计划、实现报告、验收报告、评审套件、截图</li>
+    </ul>
+  </div>
+</div>
+
+<h3>读这份文档前必须知道：这个工作树正在被并发修改</h3>
+<div class="note bad">
+  <span class="t">⚠ 一个正在变动的仓库（下文所有数字都要按这个前提读）</span>
+  通读开始时快照是 <code>e1577da</code>，工作树里带一个<b>未提交的第二工作区</b> —— 📈 <b>Customer Review Alpha</b>：消费者硬件公司的 Amazon / Best Buy 评论语气按季度聚合成曲线，与公司自己申报的 SEC 财报对照，Reddit 当更早的金丝雀；核心假设是<b>评论语气先崩，营收再 miss</b>。它是一个独立库 + 独立路由前缀 + 顶部工作区切换器的完整功能。
+  <p style="margin:8px 0 6px">在通读的约 15 分钟里，我实际观察到它走完了一个完整循环：</p>
+  <ul style="margin:6px 0 0">
+    <li><b>16:00 左右</b>：完整存在（8 个 server 文件、4 个前端组件、<code>data/reviews.sqlite</code>、11 处 <code>/api/reviews/*</code> 路由、166 个测试）。</li>
+    <li><b>16:04–16:08</b>：提交 <code>3c8fdcc</code>「Remove unused customer-review schema」出现，随后前端、路由、服务、测试与数据库文件从磁盘消失，只剩 6 个孤立的 server 文件与 <code>shared/review-types.ts</code>；路由降到 95 处，测试降到 151 个，<code>VIEWS</code> 回到 7 项。</li>
+    <li><b>16:09（最后一次核对）</b>：文件被逐个加回，<code>VIEWS</code> 又有 <code>'reviews'</code>、切换器重新出现、路由回到 106 处；但 <code>server/reviews.test.ts</code> 仍未恢复，测试仍是 151 个。</li>
+  </ul>
+  <p style="margin:8px 0 6px"><b>唯一稳定的事实是：这个功能不在提交 <code>3c8fdcc</code> 里。</b>所以本文档的结构描述一律以 HEAD 为准（下文凡标 <code>@HEAD</code> 的数字都用 <code>git ls-tree</code> / <code>git show</code> 在提交上统计，可复现、不受工作树影响），而涉及第二工作区的内容单独标注"不在 HEAD"。</p>
+  <p style="margin:8px 0 6px">需要看此刻的真实状态，请直接跑：</p>
+  <pre style="margin:0">git status --short                          # 新增 / 改动 / 残留
+git log --oneline -1                        # HEAD 现在是谁
+grep -n "const VIEWS" src/navigation.ts     # UI 里有没有 reviews 目的地
+ls server/reviews src/components/reviews    # 第二工作区的文件清单
+npm test                                    # 当前真实测试数（核对时为 151）
+grep -rhoE "\.(get|post|put)\.?\('/api[^']*'" server --include=*.ts | wc -l   # 路由数（核对时 HEAD 95 / 工作树 106）</pre>
+</div><div class="note">
+  <span class="t">读这个代码库的关键一条线索</span>
+  War Tracker 的每个模块文件头都写着<b>这个模块拒绝断言什么</b>；每个“算不出来”的值都返回 <code>status + reason</code> 而不是 0；每个判断都要求<b>具名评审人 + 理由 + 引用的证据版本</b>。理解了这一条，整个代码结构就顺了。
+</div>
+</section>
+
+<!-- ══════════════════ 02 ══════════════════ -->
+<section id="tree">
+<h2><span class="n">02</span>仓库结构</h2>
+<pre class="tree">
+<b>Traders Tracker/</b>
+├── <b>server/</b>                        <i>← 后端：采集 + 存储 + 分析 + API（81 个文件，~9.8k 行 @HEAD）</i>
+│   ├── index.ts                       <i>进程入口：Express 装配 10 个路由模块 + 3 个后台作业、静态/中间件托管</i>
+│   ├── db.ts                          <i>唯一主库句柄 + 全部建表 DDL + 幂等迁移</i>
+│   ├── registry.ts                    <i>数据源静态定义（31 个新闻/官方/海事源 + 市场/传感器/钱包/Telegram）</i>
+│   ├── ingest.ts / scheduler.ts / sourcejob.ts / tgscheduler.ts   <i>采集编排</i>
+│   ├── lease.ts / breaker.ts / http.ts / sourceconfig.ts / sourcehealth.ts / runlog.ts / versions.ts
+│   ├── adapters.ts                    <i>adapter 注册表（rss / maersk / fcdo / ofac / easa / gnews / inbox / nga）</i>
+│   ├── <b>sources/</b>                  <i>12 个采集器实现</i>
+│   ├── feed.ts / stream.ts / sourcesapi.ts / history.ts / seed.ts / cli.ts
+│   ├── <b>geo.ts  link.ts  story.ts  eventtime.ts  equivalence.ts  assets.ts</b>   <i>← 纯规则分析层（英语词典/IDF/余弦相似度）</i>
+│   ├── translation.ts                 <i>MyMemory 机翻 + 4500 字符/日 配额</i>
+│   ├── briefing.ts / alerts.ts        <i>规则生成的变化简报 / 状态机告警</i>
+│   ├── <b>indicators/</b>               <i>指标服务 + 缓存 + 关注列表 + 偏好</i>
+│   ├── <b>research/</b>                 <i>研究空间：卷宗、假设、主张评审、日历、覆盖度、溯源审计（16 张表）</i>
+│   ├── <b>wallets/</b>  <b>maritime/</b>  review/   <i>3 个子域（review/ 单数 = 配对批准闸门）</i>
+│   ├── <b>reviews/</b>                  <i>⚠ 第二工作区正在被并发改回来（HEAD 里没有）——见 §01 提示</i>
+│   └── *.test.ts                      <i>15 个测试文件（151 个测试）@HEAD</i>
+├── <b>src/</b>                           <i>← 前端 SPA（51 个文件，~4.6k 行）</i>
+│   ├── main.tsx · App.tsx             <i>挂载 + 全局面板装配</i>
+│   ├── navigation.ts                  <i>哈希路由 + URL 上下文校验</i>
+│   ├── api.ts                         <i>~85 个端点的薄封装 + EventSource 订阅</i>
+│   ├── store.ts                       <i>prefs / watchlist 两个 useSyncExternalStore 外部存储</i>
+│   ├── workspace.ts                   <i>localStorage 草稿 + RequestGeneration 竞态守卫</i>
+│   ├── shortcuts.ts · toast.ts · format.ts · export.ts · clipboard.ts
+│   ├── styles.css                     <i>648 行手写设计令牌系统，无框架</i>
+│   └── <b>components/</b>               <i>26 个平铺组件 + research/(12)</i>
+├── <b>shared/</b>                        <i>← 前后端共用契约（6 个文件、~0.95k 行 @HEAD）</i>
+│   ├── types.ts                       <i>381 行：全部 API 返回类型</i>
+│   ├── indicators.ts                  <i>392 行：纯指标数学（SMA/EMA/RSI/MACD/布林/分位数）</i>
+│   ├── research.ts · briefing.ts · maritime.ts · translation.ts
+│   ├── review-types.ts                <i>⚠ untracked，属于第二工作区</i>
+├── <b>scripts/</b>                       <i>← 13 个 CLI 工具</i>
+│   └── acceptance.ts                  <i>29 条验收标准自动跑（在数据库副本上）</i>
+├── <b>data/</b>                          <i>← 运行时数据（SQLite/种子/资产/注册表，多数 git-ignored）</i>
+├── <b>docs/</b>                          <i>← 计划、实现报告、验收报告、人工评审套件、截图</i>
+├── package.json                       <i>无 workspace、单包；npm scripts 即全部工具链</i>
+├── vite.config.ts                     <i>仅 React 插件 + manualChunks 拆包</i>
+└── tsconfig.json                      <i>单配置覆盖 server/src/shared/scripts，strict</i>
+</pre>
+
+<div class="note">
+  <span class="t">结构上的三个特点</span>
+  <b>1) 后端不是一个"大 server.ts"</b>，而是按<b>子域分目录</b>（indicators / research / wallets / maritime / reviews），每个子域自带 <code>schema.ts</code>、<code>routes.ts</code>、<code>service.ts</code>，主 <code>db.ts</code> 只调用它们的 <code>migrate*()</code>。（<code>reviews/</code> 是那个正在变动、不在 HEAD 的第二工作区，见 §01 提示。）<br>
+  <b>2) 前端是扁平 + 两个子目录</b>，没有 <code>monitor/feed/markets/</code> 这类按视图分的目录——视图归属由 <code>StatusBar.tsx</code> 的 <code>View</code> 联合类型和 <code>navigation.ts</code> 定义。<br>
+  <b>3) 关键业务规则住在纯函数里</b>（<code>geo.ts</code>、<code>link.ts</code>、<code>story.ts</code>、<code>shared/indicators.ts</code>），I/O 在外层，所以规则可以被 fixture 直接测试。
+</div>
+</section>
+
+<!-- ══════════════════ 03 ══════════════════ -->
+<section id="arch">
+<h2><span class="n">03</span>架构分层</h2>
+<p class="lead-in">数据只往一个方向流；每一层的产物都能被单独检查。下面从外到内是 7 层。</p>
+
+<div class="layers">
+  <div class="layer">
+    <div class="lname">① 外部数据源<em>42 个，网络边界</em></div>
+    <div class="chips">
+      <span class="chip gr">Polymarket (Gamma+CLOB)</span><span class="chip gr">Kalshi</span>
+      <span class="chip">BBC · Guardian · NYT · Sky · France24</span><span class="chip">Al Jazeera EN/AR</span>
+      <span class="chip">MEE · JPost · Amwaj · Anadolu · IRNA EN/FA · Press TV</span>
+      <span class="chip">UN News · UN Press · OFAC · OFSI · FCDO · EASA</span>
+      <span class="chip">NGA 航行警告 · Maersk · gCaptain · Splash247</span>
+      <span class="chip">.eml 收件箱</span>
+      <span class="chip pu">Telegram 公开频道</span>
+      <span class="chip acc">IMF PortWatch · FRED · OpenSky · IODA</span>
+      <span class="chip acc">Polymarket Data API v2 (钱包)</span>
+      <span class="chip">Google News 标题发现 ×4</span>
+      <span class="chip" style="opacity:.55">ReliefWeb（已屏蔽，不绕过）</span>
+    </div>
+  </div>
+  <div class="layer">
+    <div class="lname">② 采集适配器<em>server/sources/ + adapters.ts</em></div>
+    <div class="chips">
+      <span class="chip hi">SourceAdapter = (src) =&gt; Promise&lt;RssResult&gt;</span>
+      <span class="chip">rss</span><span class="chip">maersk</span><span class="chip">nga</span><span class="chip">inbox</span>
+      <span class="chip">easa</span><span class="chip">ofac</span><span class="chip">fcdo</span><span class="chip">gnews</span>
+      <span class="chip pu">telegram 分页 + 缺口恢复</span>
+      <span class="chip acc">sensors (4 条数值序列)</span>
+      <span class="chip acc">wallets (4 个同步作业)</span>
+    </div>
+  </div>
+  <div class="layer">
+    <div class="lname">③ 调度与礼貌性<em>lease · breaker · budget · cadence</em></div>
+    <div class="chips">
+      <span class="chip hi">sourcejob.runSourceJob</span>
+      <span class="chip">lease 跨进程租约</span><span class="chip">breaker 3 次失败熔断</span>
+      <span class="chip">withBudget 请求预算 (AsyncLocalStorage)</span>
+      <span class="chip">dueAt 抖动 ±5%</span><span class="chip">per-host 400ms 限速</span>
+    </div>
+  </div>
+  <div class="layer">
+    <div class="lname">④ 规范化与落库<em>rss.storeParsed → 单一 tx()</em></div>
+    <div class="chips">
+      <span class="chip hi">storeParsed / ingestParsed</span>
+      <span class="chip">实体抽取 (geo)</span><span class="chip">话题 (8 条正则)</span><span class="chip">地理编码 (地名志)</span>
+      <span class="chip">Tier 归属</span><span class="chip">中东相关性 gating</span><span class="chip">修订检测 revision_count</span>
+      <span class="chip gr">bump(source_versions)</span>
+    </div>
+  </div>
+  <div class="layer">
+    <div class="lname">⑤ 存储<em>SQLite WAL</em></div>
+    <div class="chips">
+      <span class="chip hi">data/tracker.sqlite</span><span class="chip">61 张表 / 16 个显式索引</span>
+      <span class="chip">events</span><span class="chip">markets / price_history / market_obs</span>
+      <span class="chip">event_market_links</span><span class="chip">stories</span>
+      <span class="chip">series_points</span><span class="chip">tg_*</span><span class="chip">pm_*</span>
+      <span class="chip">claims / dossiers / hypotheses</span><span class="chip">alerts</span><span class="chip">briefings</span>
+    </div>
+  </div>
+  <div class="layer">
+    <div class="lname">⑥ 分析与规则<em>纯函数为主，无模型</em></div>
+    <div class="chips">
+      <span class="chip">link.rebuildLinks 事件↔合约</span><span class="chip">story 跨outlet聚类</span>
+      <span class="chip">equivalence 跨场馆对照</span><span class="chip">indicators 12 个指标</span>
+      <span class="chip">alerts 状态机</span><span class="chip">briefing 引用编号</span>
+      <span class="chip">claims 主张评审</span><span class="chip">maritime 船名/IMO</span>
+      <span class="chip" style="opacity:.6">第二工作区（不在 HEAD，见 §01）</span>
+    </div>
+  </div>
+  <div class="layer">
+    <div class="lname">⑦ 传输与呈现<em>Express 装配 → React</em></div>
+    <div class="chips">
+      <span class="chip hi">95 处 REST 路由注册</span>
+      <span class="chip">SSE /api/stream</span>
+      <span class="chip">keyset 分页 /api/feed</span>
+      <span class="chip">/api/health 200|503</span>
+      <span class="chip gr">7 个目的地视图</span>
+      <span class="chip">ECharts / Leaflet / Cytoscape</span>
+    </div>
+  </div>
+</div>
+
+<div class="arrow-row">↓</div>
+
+<h3>请求侧与推送侧</h3>
+<div class="grid2">
+  <div class="card">
+    <h4>读路径（stale-while-revalidate）</h4>
+    <ol class="small" style="margin-bottom:0">
+      <li>浏览器请求 <code>/api/status</code>（每 20s，刷新中每 2.5s）</li>
+      <li>该路由挂了一个中间件 <code>maybeRefresh()</code>：若数据 >5 分钟未更新且没有正在跑的采集，<b>后台异步</b>触发 <code>runIngest()</code></li>
+      <li>响应立刻返回缓存数据与 <code>versions</code> 快照</li>
+      <li>前端用 <code>last_refresh_finished_at + sorted(versions)</code> 作为签名，签名一变就重新拉 <code>/api/events</code> + <code>/api/markets</code></li>
+      <li>另有 <code>setInterval</code> 每 10 分钟兜底，以及 <code>POST /api/refresh</code> 手动强制</li>
+    </ol>
+  </div>
+  <div class="card">
+    <h4>推送路径（SSE 只做"通知"，不做载荷）</h4>
+    <ul class="small" style="margin-bottom:0">
+      <li><code>GET /api/stream</code> 返回 <code>text/event-stream</code>，发 <code>event: connected</code> 后每 25s 发 <code>: keepalive</code></li>
+      <li>只有三种事件：<code>refresh</code>（采集完成）、<code>alerts</code>（告警评估后）、<code>connected</code></li>
+      <li>客户端收到后<b>再走一次 HTTP</b> 拿真实数据 → 轮询永远是真相来源，SSE 只是降低延迟</li>
+      <li>无 <code>Last-Event-ID</code> 重放：错过的事件不补发（由轮询兜底）</li>
+      <li>进程退出时 <code>releaseAllLeases()</code> + <code>closeAllStreamClients()</code>，让 <code>tsx watch</code> 重启不必等租约过期</li>
+    </ul>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════ 04 ══════════════════ -->
+<section id="pipeline">
+<h2><span class="n">04</span>采集与调度管线</h2>
+
+<h3>4.1 一个采集器长什么样</h3>
+<p>新增一个数据源只需四步（<code>adapters.ts</code> 文件头明确写了契约）：写一个 <code>ingestX()</code> → 注册进 <code>ADAPTERS</code> → 在 <code>registry.ts</code> 加一条 <code>NewsSource</code> → 加一个 fixture 测试。</p>
+<pre>// server/adapters.ts —— 契约原文要点
+export type SourceAdapter = (src: NewsSource) =&gt; Promise&lt;AdapterResult&gt;;
+export const ADAPTERS = { rss, maersk, fcdo, ofac, easa, gnews, inbox, nga };
+export function adapterFor(src: NewsSource): SourceAdapter;
+
+// 契约：失败必须 throw（"静默 ≠ 失败"，绝不用空结果冒充成功）；
+//       必须幂等；只能通过 storeParsed / ingestParsed 落库；绝不绕过屏蔽。</pre>
+
+<h3>4.2 一次 <code>runIngest()</code> 的完整时序</h3>
+<div class="flow">
+  <span class="step">runIngest()</span><span class="sep">→</span>
+  <span class="step">单飞 promise + withLease('ingest-cycle', 30min)</span><span class="sep">→</span>
+  <span class="step">对每个源 runSourceJob()</span><span class="sep">→</span>
+  <span class="step">rebuildLinks()</span><span class="sep">→</span>
+  <span class="step">matchTelegramToEvents()</span><span class="sep">→</span>
+  <span class="step">rebuildStories()</span><span class="sep">→</span>
+  <span class="step">evaluateAlerts()</span><span class="sep">→</span>
+  <span class="step">afterCollection('ingest')</span><span class="sep">→</span>
+  <span class="step">kvSet('last_refresh_finished_at')</span>
+</div>
+<p class="small"><code>afterCollection()</code> 做三件事：重捕获已附加来源的版本、把 provider 的合约到期日同步进日历、扫描新文本里的船名提及。</p>
+
+<h3>4.3 <code>runSourceJob</code>：闸门顺序</h3>
+<div class="flow">
+  <span class="step">到期了吗？</span><span class="sep">→</span>
+  <span class="step">熔断器开着吗？</span><span class="sep">→</span>
+  <span class="step">withBudget(请求预算)</span><span class="sep">→</span>
+  <span class="step">adapter(src)</span><span class="sep">→</span>
+  <span class="step">recordRun / recordSuccess / recordUsage</span>
+</div>
+<div class="tblwrap">
+<table>
+<thead><tr><th>机制</th><th>规则</th><th>为什么这样设计</th></tr></thead>
+<tbody>
+<tr><td><b>Cadence</b></td><td><code>dueAt = last + interval × (1 ± 5%)</code>；区间来自 <code>source_config</code> 覆盖值或 registry 默认值。<b>上次不是 <code>ok</code> 的源不受 interval 限制</b>，下次机会立刻重试</td><td>抖动避免所有源在同一秒齐发；失败源应尽快恢复而不是等一个完整周期</td></tr>
+<tr><td><b>Lease</b></td><td><code>leases</code> 表一行一个名字。仅当租约已过期、持有者是自己、或持有者是<b>已死的本地 PID</b>（<code>process.kill(pid,0)</code> → ESRCH）才抢得到</td><td>跨进程互斥（<code>tsx watch</code> 重启、CLI ingest 与 server 同时跑），且崩溃后不永久卡死</td></tr>
+<tr><td><b>Breaker</b></td><td>连续失败 ≥3 次打开；冷却 <code>max(10, interval) × 2^(fails−3)</code>，上限 6 小时；状态持久化在 <code>breaker</code> 表</td><td>不因为一个死源每 5 分钟猛敲一次；<b>手动 Refresh 仍然会重试</b></td></tr>
+<tr><td><b>Budget</b></td><td>每源每轮请求上限；通过 <code>AsyncLocalStorage</code> 在 <code>fetchText</code> 层计数，<b>重试也计入</b>。超限抛 <code>BudgetExceeded</code>，被当作<b>部分成功</b>：已存的数据保留、熔断器不动</td><td>对上游礼貌；且"取了一半"不等于"失败了"</td></tr>
+<tr><td><b>限速</b></td><td>per-host 最小间隔（默认 400ms；t.me 1500、opensky 800、clob 250）；UA 明示身份；4xx（除 408/429）不重试；<code>Retry-After</code> 上限 30s</td><td>被屏蔽时不绕过——<code>reliefweb-me</code> 就是 <code>enabled:false</code> + 写明屏蔽原因</td></tr>
+<tr><td><b>失败隔离</b></td><td>每个源独立 try/catch；adapter 内部再分级隔离：Polymarket 连续 2 个 tag 失败就放弃剩余（仅当 <code>okTags===0</code> 才 throw）；FCDO 按国家隔离（仅当 <code>ok===0</code> 才 throw）；Telegram 单频道失败不影响其他频道，只有<b>所有</b>频道都失败才把整个源标记 FAILED</td><td>一个坏源或一条坏记录不应该让整轮采集失败</td></tr>
+<tr><td><b>告警不炸</b></td><td>真实数据的 EASA / Maersk / OFAC 若解析出 0 行则 throw（判定为"结构变了"）</td><td>区分"确实没有新内容"与"解析器坏了"</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>4.4 健康度：两个完全不同的概念</h3>
+<div class="grid2">
+  <div class="card">
+    <h4>采集健康 (fetch health)</h4>
+    <p class="small" style="margin-bottom:6px">回答"这个源最近抓成功了吗"。<code>sourceHealth()</code> 合并 registry 定义 + <code>source_health</code> 表 + 熔断器状态。</p>
+    <ul class="small" style="margin-bottom:0">
+      <li><code>status ∈ ok | error | never | blocked</code>（<code>blocked</code> 是算出来的，不落库）</li>
+      <li><code>stale = 无成功记录 或 now − last_success &gt; max(interval, 10[telegram 为 1]) × 3 min</code></li>
+      <li>UI 文案：OK / STALE / FAILED / PENDING / <b>NOT CONNECTED</b></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>数据新鲜度 (data freshness)</h4>
+    <p class="small" style="margin-bottom:6px">回答"这个源最新的一条数据有多新"。<b>与抓取时间无关</b>，按各 provider 自己的发布节奏判断。</p>
+    <ul class="small" style="margin-bottom:0">
+      <li><code>basis ∈ publication | observation | history | post</code></li>
+      <li><code>newestOf</code> 分别查 <code>MAX(published_at)</code> on events、<code>MAX(t)</code> on series_points（按前缀）、<code>MAX(t)</code> on price_history（按场馆）、<code>MAX(posted_at)</code> on tg_posts</li>
+      <li><code>assessment ∈ current | delayed | quiet | old | unknown</code>——"quiet" 表示这个源本来就很少更新，不是故障</li>
+    </ul>
+  </div>
+</div>
+<div class="note ok">
+  <span class="t">两个分类器分开，是这套设计里最实用的一处</span>
+  一个源可以同时是 <b>OK（抓取正常）</b> 和 <b>quiet/old（内容很旧）</b>。NGA 航行警告就是典型：API 正常返回，但中东水域最新生效的警告发布于 2024 年 5 月——代码与 UI 都如实说这是"常设风险背景，不是当前覆盖"。
+</div>
+</section>
+
+<!-- ══════════════════ 05 ══════════════════ -->
+<section id="data">
+<h2><span class="n">05</span>数据模型（SQLite）</h2>
+<p class="lead-in">主库是 <code>data/tracker.sqlite</code>，<code>PRAGMA journal_mode=WAL; foreign_keys=ON; busy_timeout=5000</code>。<b>没有 ORM，没有编号迁移</b>——所有 DDL 集中在 <code>server/db.ts</code> 加各子域的 <code>migrate*()</code>，全部写成幂等加法：<code>CREATE TABLE IF NOT EXISTS</code>、<code>addColumn()</code>（查 <code>PRAGMA table_info</code> 后 <code>ALTER TABLE ADD COLUMN</code>）、以及<b>只在表为空时</b>才 DROP 的遗留草稿表。</p>
+
+<div class="filterbar" id="tblFilterBar">
+  <input id="tblFilter" type="search" placeholder="过滤表名 / 说明…" aria-label="过滤数据表">
+  <button class="fbtn on" data-tbl="all" type="button">全部</button>
+  <button class="fbtn" data-tbl="core" type="button">核心</button>
+  <button class="fbtn" data-tbl="mkt" type="button">市场</button>
+  <button class="fbtn" data-tbl="tg" type="button">Telegram</button>
+  <button class="fbtn" data-tbl="sensor" type="button">传感器</button>
+  <button class="fbtn" data-tbl="wallet" type="button">钱包</button>
+  <button class="fbtn" data-tbl="ops" type="button">运维</button>
+  <button class="fbtn" data-tbl="res" type="button">研究</button>
+  <button class="fbtn" data-tbl="mar" type="button">海事</button>
+  <button class="fbtn" data-tbl="rev" type="button">Reviews（不在 HEAD）</button>
+  <span class="count" id="tblCount"></span>
+</div>
+
+<div class="tblwrap">
+<table id="tblTable">
+<thead><tr><th>表</th><th>主键 / 唯一键</th><th>作用与关键列</th></tr></thead>
+<tbody>
+<tr data-g="core"><td>events</td><td><code>id</code>；<code>UNIQUE(source_id, external_id)</code></td><td>规范化后的新闻/官方/海事条目。<code>entities</code>/<code>topics</code> 是 JSON 数组；<code>relevant</code> 是中东相关性闸门；后续列迁移增加 <code>modified_at</code>、<code>revision_count</code>、<code>publisher</code>、<code>tier</code>、<code>time_precision</code>、<code>outlet</code>、<code>publisher_time_raw</code></td></tr>
+<tr data-g="core"><td>stories</td><td><code>event_id</code></td><td>跨 outlet 聚类结果（<code>story_id</code>, <code>size</code>）；只为 ≥2 条的簇写行</td></tr>
+<tr data-g="core"><td>source_versions</td><td><code>source_id</code></td><td>每个源的数据版本号，只在 <code>inserted&gt;0 || revised&gt;0</code> 时 <code>bump()</code>。前端据此判断"我关心的源变了没有"</td></tr>
+<tr data-g="core"><td>source_health</td><td><code>source_id</code></td><td>最近一次尝试/成功时间、状态、条目数、错误文本</td></tr>
+<tr data-g="core"><td>raw_cache</td><td><code>source_id</code></td><td>每个 feed 最近一次成功的原始响应（≤1.5MB，带 sha256），供 <code>npm run replay</code> 离线复现解析器回归</td></tr>
+<tr data-g="core"><td>kv</td><td><code>k</code></td><td>杂项键值：<code>last_refresh_finished_at</code>、<code>seed_captured_at</code>、<code>alert_cursor:*</code>、<code>prefs</code>、<code>watchlist</code></td></tr>
+
+<tr data-g="mkt"><td>markets</td><td><code>condition_id</code></td><td>两个场馆的合约，<b>永不合并</b>。<code>venue</code> + <code>ext_ref</code>（Kalshi 用 <code>"SERIES|TICKER"</code>）、<code>volume_unit</code>（USD vs contracts）、<code>quote_basis</code>、<code>open_interest</code>、<code>resolution_text</code></td></tr>
+<tr data-g="mkt"><td>market_obs</td><td><code>(condition_id, observed_at)</code></td><td><b>我们自己的</b>观测序列：每次刷新一行。与 provider 历史互相独立</td></tr>
+<tr data-g="mkt"><td>price_history</td><td><code>(condition_id, t)</code></td><td>provider 价格历史（Polymarket CLOB <code>/prices-history</code>）。<b>每次抓取整体替换</b>而非累加，避免留下不在网格上的尾点</td></tr>
+<tr data-g="mkt"><td>history_meta</td><td><code>condition_id</code></td><td>抓取时间、fidelity、error、basis</td></tr>
+<tr data-g="mkt"><td>event_market_links</td><td><code>(event_id, condition_id)</code></td><td>相关性指针：<code>score</code> + <code>matched_entities</code> + <code>matched_topics</code>。UI 必须展示是哪几个词匹配上的</td></tr>
+
+<tr data-g="tg"><td>tg_channels</td><td><code>channel</code></td><td>频道元信息 + <code>gap_note</code>（追赶触到页数上限时告警"中间可能有缺失"）</td></tr>
+<tr data-g="tg"><td>tg_posts</td><td><code>(channel, post_id)</code></td><td>帖子正文与规则分析字段。<code>seen_via ∈ latest|backfill|gap|unknown</code> 区分"新到"与"补历史"；媒体只存 URL</td></tr>
+<tr data-g="tg"><td>tg_matches</td><td><code>(channel, post_id, event_id)</code></td><td>帖子与新闻的文本相似度交叉核对。"没有匹配"不是"虚假"的证据</td></tr>
+<tr data-g="tg"><td>tg_gaps</td><td>自增 <code>id</code></td><td>持久化的缺失区间：<code>low_id</code>（不含）/ <code>high_id</code>（不含）/ <code>cursor_before</code> 向下走。<b>只有该缺口自己走到 low_id 才清除</b></td></tr>
+<tr data-g="tg"><td>tg_runs / tg_channel_config</td><td>复合 / <code>channel</code></td><td>每次运行的页数与插入量 / 频道白名单（UI 可编辑，≤20 个）</td></tr>
+
+<tr data-g="sensor"><td>series_points</td><td><code>(series_id, t)</code></td><td>数值序列：chokepoint 通行量、Brent/WTI、空域流量、互联网可达性。<code>t</code> 是 provider 自己的时间戳（自采集序列则用轮询时间）</td></tr>
+<tr data-g="sensor"><td>series_meta</td><td><code>series_id</code></td><td>抓取时间</td></tr>
+
+<tr data-g="wallet"><td>pm_market_trades</td><td><code>key</code>（复合键+序号）</td><td>试点市场的大额/全部成交。上游<b>没有唯一 id</b>，所以用复合键 + 出现序号 <code>#n</code> 消歧，只插入不覆盖；带 <code>api_version</code></td></tr>
+<tr data-g="wallet"><td>pm_wallet_activity / pm_positions / pm_position_history</td><td>复合</td><td>被关注钱包的活动与持仓快照（持仓历史保留 30 天）</td></tr>
+<tr data-g="wallet"><td>pm_holders / pm_leaderboard / pm_profiles</td><td>复合</td><td>大户榜（无分母 → 不算集中度）、排行榜（候选钱包发现）、显示名</td></tr>
+<tr data-g="wallet"><td>pm_sync / pm_gaps</td><td><code>target</code> / 自增</td><td>连续覆盖语义：<code>covered_since</code> + 缺口行 + resume cursor。<b>有缺口的钱包不计入合计</b></td></tr>
+<tr data-g="wallet"><td>pm_watch_wallets / pm_pilot_markets</td><td>主键</td><td>上限 20 / 10；选择规则在选择当时冻结（<code>selection_rule</code>, <code>selected_at</code>）</td></tr>
+
+<tr data-g="ops"><td>source_config / source_runs</td><td><code>source_id</code></td><td>每源的间隔与请求预算覆盖值（带 <code>version</code>），以及最近一次运行的用量</td></tr>
+<tr data-g="ops"><td>leases</td><td><code>name</code></td><td>跨进程租约：<code>holder = "&lt;pid&gt;-&lt;hex&gt;"</code>、<code>expires_at</code></td></tr>
+<tr data-g="ops"><td>breaker</td><td><code>source_id</code></td><td>持久化熔断状态，重启后不忘</td></tr>
+<tr data-g="ops"><td>collection_attempts / source_set_changes</td><td>自增 / 自增</td><td>采集遥测。<b>只从这段代码首次运行开始记录</b>——此前的连续性未知（UI 明说）</td></tr>
+<tr data-g="ops"><td>news_translations / translation_budget</td><td>内容哈希 / 日期</td><td>MyMemory 机翻缓存与每日 4500 字符预算。<b>配额在网络调用之前就扣除</b></td></tr>
+<tr data-g="ops"><td>briefings</td><td><code>id</code></td><td>冻结的简报快照（序列化 JSON，含全部引用）</td></tr>
+<tr data-g="ops"><td>alert_rules / alert_state / alerts</td><td><code>id</code> / <code>(rule_id,target_id)</code> / <code>episode_key UNIQUE</code></td><td>5 条规则、每目标状态机、告警记录。<code>episode_key</code> 保证同一事件窗口内只开一条</td></tr>
+
+<tr data-g="res"><td>source_item_versions</td><td>自增 <code>id</code></td><td><b>不可变</b>的来源版本：<code>first_capture | publisher_revision | content_changed | unavailable | restored</code>。研究引用的锚点</td></tr>
+<tr data-g="res"><td>claims / claim_evidence / claim_reviews</td><td>各自 <code>id</code></td><td>主张必须<b>逐字引用</b>已捕获来源中的子串；评估分 <code>insufficient|supported|contradicted|contested</code>，需要匹配证据 + 评审人 + 理由；评审表 append-only</td></tr>
+<tr data-g="res"><td>research_dossiers / dossier_items / research_tasks</td><td><code>id</code></td><td>卷宗、附加条目（幂等）、任务（关闭需要备注或证据）。<code>expected_version</code> 不匹配返回 409</td></tr>
+<tr data-g="res"><td>research_hypotheses / hypothesis_evidence / research_decisions</td><td><code>id</code></td><td>假设 + 证据关系（supports/contradicts/unclear）+ <b>append-only 决策表</b>。自动相似度永不改变信念</td></tr>
+<tr data-g="res"><td>calendar_entries / calendar_revisions</td><td><code>id</code></td><td>日期条目。<code>pe:&lt;condition_id&gt;</code> 是 provider 到期日的镜像，保留 provider 原义；date-only 条目保持整天</td></tr>
+<tr data-g="res"><td>research_audit / workspace_preferences</td><td>自增 / 键</td><td>每次变更的审计记录 / 工作区偏好</td></tr>
+
+<tr data-g="mar"><td>vessels / vessel_identifiers / vessel_attributes</td><td><code>id</code> / 复合</td><td>船舶目录。IMO 校验位验证；同一 IMO/MMSI 被另一条记录占用时返回 409，<b>永不自动合并</b>；位置字段永远是 <code>unavailable</code>（AIS 受权限制）</td></tr>
+<tr data-g="mar"><td>vessel_mentions / asset_reviews</td><td>自增</td><td>文本提及待人工确认（名称匹配不自动升级）；参考资产的人工评审记录</td></tr>
+
+<tr data-g="rev"><td>companies / products</td><td><code>ticker</code> / <code>asin</code></td><td><span class="tag t3">不在 HEAD</span> 存放在独立库 <code>data/reviews.sqlite</code>（该文件在工作树里存在，提交里没有）：监控的上市公司与 ASIN</td></tr>
+<tr data-g="rev"><td>reviews_raw / reviews_scored</td><td><code>review_id</code></td><td><span class="tag t3">不在 HEAD</span> 原始评论 + Jev 结构化评分（tone −2..+2、是否与产品相关、主因、标签、所用模型）</td></tr>
+<tr data-g="rev"><td>company_financials</td><td><code>id</code> 如 <code>LOGI-FY2025Q3</code></td><td><span class="tag t3">不在 HEAD</span> SEC 财报数据：营收、YoY 增速、营业利润、filing URL</td></tr>
+<tr data-g="rev"><td>review_kv</td><td><code>k</code></td><td><span class="tag t3">不在 HEAD</span> 该库的杂项键值</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note warn">
+  <span class="t">表计数口径</span>
+  上表标注"不在 HEAD"的 4 组属于独立库 <code>data/reviews.sqlite</code>（第二工作区自己迁移，主库不参与）。实测当前 <code>data/tracker.sqlite</code> 有 <b>61 张表 + 16 个显式索引</b>；本节其余所有表都属于这个主库。
+</div>
+
+<h3>5.1 身份的确定方式（全套去重规则）</h3>
+<div class="tblwrap">
+<table>
+<thead><tr><th>实体</th><th>身份</th><th>规则</th></tr></thead>
+<tbody>
+<tr><td>事件</td><td><code>evt_&lt;YYYYMMDD&gt;_&lt;sha1(src|externalId)[0:6]&gt;</code></td><td>日期取<b>条目自述的日期</b>而非入库日期；重复见到同一 <code>(source_id, external_id)</code> 时若 publisher 的 <code>modified_at</code> 前进了，就地更新并 <code>revision_count++</code>，但 <code>first_seen_at</code>/<code>published_at</code> 保持首次记录的值</td></tr>
+<tr><td>合约</td><td><code>condition_id</code></td><td>Kalshi 用 <code>kalshi:&lt;ticker&gt;</code>，与 Polymarket 的 id 空间完全隔离</td></tr>
+<tr><td>Telegram 帖子</td><td><code>(channel, post_id)</code></td><td>媒体只存 URL，从不下载</td></tr>
+<tr><td>钱包成交</td><td>复合键 + 出现序号</td><td>上游无唯一 id；<code>api_version</code> 记录语义版本，只插入不覆盖</td></tr>
+<tr><td>Feed 条目</td><td><code>web:&lt;source_id&gt;:&lt;external_id&gt;</code> 或 <code>telegram:&lt;channel&gt;:&lt;post_id&gt;</code></td><td>统一 feed 的稳定 key，也是研究空间引用的形式</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<!-- ══════════════════ 06 ══════════════════ -->
+<section id="modules">
+<h2><span class="n">06</span>功能模块</h2>
+<p class="lead-in">按用户可见的 8 个视图组织，每个模块给出：它解决什么、关键文件、关键 API、设计要点。</p>
+
+<!-- Monitor -->
+<div class="mod">
+  <div class="mhead"><span class="mt">① Monitor（仪表盘）</span><span class="tag acc">默认首页 · 键 <kbd>1</kbd></span><span class="mm">src/App.tsx · EventList.tsx · RightPanel.tsx · SimpleDetail.tsx · ProbChart.tsx</span></div>
+  <div class="mbody">
+    <p>把工作流压缩到一屏：<b>条目（左）→ 该条目牵动的合约（图表上方一条可横向滚动的 "Touches" 带）→ 带发布时刻虚线的价格曲线 → 存入卷宗 / 加笔记</b>。</p>
+    <dl class="kv">
+      <dt>两种密度</dt><dd><b>Simple（默认）</b>= <code>SimpleDetail</code>：头条 + ≤3 个合约选择器 + 一个 <code>ProbChart</code> + "Save to dossier"。列表头部勾选"Detailed view"才切到 <code>RightPanel</code> 全量面板。<code>simple</code> 存在 localStorage 草稿里</dd>
+      <dt>详细面板</dt><dd><code>RightPanel</code>（472 行）四个下半页标签：Selected event / Map / Sensors / All contracts；含跨场馆对照 <code>counterparts</code>、反应表 <code>reaction</code>、大额成交地毯标记、叠加指标与 RSI/MACD 子图</dd>
+      <dt>列表</dt><dd><code>EventList</code>：搜索 + <code>&lt;details&gt;</code> 内的 topic / tier / scope / "include filtered-out" 过滤；每张卡显示 outlet、Tier 徽章、年龄、头条、文中的地名、话题、牵动合约数；阿拉伯语条目 <code>dir="rtl"</code> 并附机器英译</dd>
+      <dt>关键 API</dt><dd><code>/api/events</code> · <code>/api/events/:id</code> · <code>/api/markets/:id/history</code> · <code>…/indicators</code> · <code>…/reaction</code> · <code>…/counterparts</code></dd>
+      <dt>设计要点</dt><dd>所有叠加指标<b>一次性请求</b>（<code>IND_IDS</code>）以便即时切换；null 是断点，永不画成 0；图例指出"时间巧合，非因果"</dd>
+    </dl>
+  </div>
+</div>
+
+<!-- Feed -->
+<div class="mod">
+  <div class="mhead"><span class="mt">② Feed（统一流）</span><span class="tag acc">键 <kbd>2</kbd></span><span class="mm">server/feed.ts · src/components/FeedView.tsx · TelegramView.tsx</span></div>
+  <div class="mbody">
+    <p>把新闻、官方、海事、Telegram <b>四条流合成一条</b>，用稳定身份 + keyset 分页 + "N new items 不移动列表" + 未读标记。</p>
+    <dl class="kv">
+      <dt>分页</dt><dd>排序 <code>pub DESC, key DESC</code>，游标是 base64url 的 <code>[pub,key]</code>，取 <code>limit+1</code> 判断是否有下一页</dd>
+      <dt>"新"的定义</dt><dd>排除 backfill：Telegram 要求 <code>seen_via='latest'</code>，网页要求 <code>first_seen − published ≤ 24h</code>（<code>LATE_FIND_H</code>）。补历史/缺口恢复/迟到发现的项目<b>就地展示，但永不计入新到</b></dd>
+      <dt>Telegram 分析页</dt><dd>第二个标签：概览图表、实体网络（Cytoscape cose 布局）、地点地图（复用 Leaflet 底图）、逐帖与新闻交叉核对、媒体清单导出（只导 URL）</dd>
+      <dt>关键 API</dt><dd><code>/api/feed</code> · <code>/api/feed/new</code> · <code>/api/feed/unread</code> · <code>PUT /api/feed/read-marker</code> · <code>/api/telegram/*</code></dd>
+    </dl>
+  </div>
+</div>
+
+<!-- Markets -->
+<div class="mod">
+  <div class="mhead"><span class="mt">③ Markets（钱包活动）</span><span class="tag acc">键 <kbd>3</kbd></span><span class="mm">server/wallets/* · src/components/WalletsView.tsx · WatchlistBar.tsx</span></div>
+  <div class="mbody">
+    <p>用 Polymarket 公开 Data API v2（无需密钥）做<b>有界试点</b>：试点市场的大额成交、大户榜、被关注钱包。</p>
+    <dl class="kv">
+      <dt>4 个作业</dt><dd><code>pm-trades</code>（5 min）、<code>pm-wallets</code>（15 min）、<code>pm-holders</code>（60 min）、<code>pm-leaderboard</code>（1 天）。全部走 <code>runSourceJob</code> → 有租约、熔断、预算</dd>
+      <dt>缺口语义</dt><dd>翻页触顶时写 <code>pm_gaps</code> 并用 resume cursor 回补；<code>covered_since</code> 表示"从这个时刻起没有已知缺失"</dd>
+      <dt>诚实约束（写进验收标准）</dt><dd>大额成交每行都写明"命中了哪条筛选条件"；大户榜<b>没有分母就不算集中度</b>（<code>concentration</code> 恒为 null）；净额按市场<b>且按结果</b>分列，绝不跨结果相加，标签是"被关注钱包净成交额"而非"市场流入"；provider 未给某持仓 PnL 时合计为 <code>null</code>，绝不假设为 0</dd>
+      <dt>关键 API</dt><dd><code>/api/wallets</code> · <code>/markets/:id/large-trades</code> · <code>/markets/:id/holders</code> · <code>/watch/:wallet</code> · <code>/pilot</code> · <code>/large-trade-threshold</code></dd>
+    </dl>
+  </div>
+</div>
+
+<!-- Research -->
+<div class="mod">
+  <div class="mhead"><span class="mt">④ Research（研究工作台）</span><span class="tag acc">键 <kbd>4</kbd> · 键 <kbd>b</kbd> 直达简报</span><span class="mm">server/briefing.ts · server/research/* · src/components/research/*</span></div>
+  <div class="mbody">
+    <p>7 个标签页，是整个项目"证据纪律"最集中的地方。</p>
+    <h4>Briefing（默认标签）—— 规则生成的变化简报</h4>
+    <p><code>GET /api/briefing?hours=24</code>（或 <code>since=last</code>）。<b>没有一行由模型撰写，也没有任何评分</b>：所有句子都是对计数做固定模板，<code>BRIEFING_VERSION='briefing-1.0'</code>。</p>
+    <ul class="small">
+      <li>分节：发生了什么（故事组 + outlet + tier + <b>独立来源组</b> + 牵动的合约）、变动的合约（24h ≥5pp，或场馆报告的变动并如实标注，或超过该合约自身 P95 的小时波动；<b>算不出来就带理由计数</b>）、钉住的传感器、打开的告警、试点市场大额成交、研究变更与到期检查、未来 7 天合约日期、以及<b>"这份简报不能告诉你什么"</b></li>
+      <li><code>Cites</code> 类为每句话编号；Markdown 导出；浏览器打印样式；可冻结快照并"since last saved"</li>
+      <li>上限：<code>MOVE_PP=5</code>、每故事 6 条、最多 12 个故事、检查 60 个合约、列出 12 个</li>
+    </ul>
+    <h4>其余 6 个标签</h4>
+    <div class="tblwrap"><table>
+      <thead><tr><th>标签</th><th>作用</th><th>关键约束</th></tr></thead>
+      <tbody>
+      <tr><td>Dossiers</td><td>卷宗：时间线、修订、带证据的属性化主张、清单；可附加/卸载条目、建任务</td><td>附加幂等；<code>expected_version</code> 乐观锁 409；任务关闭需要备注或证据</td></tr>
+      <tr><td>Hypotheses</td><td>假设：失效条件、与证据版本绑定的评审</td><td>评估只能通过 append-only 的 <code>research_decisions</code>；相似度永不改变信念</td></tr>
+      <tr><td>Upcoming</td><td>合约日期列表 + 月历网格（显示时区 <code>Asia/Hong_Kong</code>）</td><td>provider 到期日以 <code>pe:&lt;condition_id&gt;</code> 镜像，保留 provider 原义；date-only 保持整天</td></tr>
+      <tr><td>Coverage</td><td>覆盖率与 <code>n/d</code>、遥测起始时间</td><td>只从本代码首次运行开始统计</td></tr>
+      <tr><td>Places</td><td>钉住的地点观测目标</td><td>—</td></tr>
+      <tr><td>Vessels</td><td>船舶目录：标识符、属性、文本提及扫描与人工确认</td><td>IMO 校验位；重名/重复标识符 409，永不合并；位置恒为 unavailable</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- Sources -->
+<div class="mod">
+  <div class="mhead"><span class="mt">⑤ Sources &amp; alerts（采集与告警）</span><span class="tag acc">键 <kbd>5</kbd></span><span class="mm">server/sourcesapi.ts · sourceconfig.ts · alerts.ts · src/components/SourcesView.tsx · AlertsView.tsx</span></div>
+  <div class="mbody">
+    <dl class="kv">
+      <dt>Sources 页</dt><dd>每个采集器一行：<b>采集健康 vs 数据年龄 vs 下次尝试</b>三个独立维度；可编辑节奏与请求预算（越界返回 400，<b>绝不静默钳制</b>）；Telegram 白名单增删；缺口与延迟。每 30s 自轮询 <code>/api/sources</code></dd>
+      <dt>Alerts 页</dt><dd>5 条规则：<code>hourly_move_p95</code>、<code>change_24h</code>、<code>large_trade</code>、<code>watched_wallet_trade</code>、<code>source_failed</code></dd>
+      <dt>状态机</dt><dd><b>只在 normal → abnormal 的转变时开火</b>；恢复到 normal 后重新武装；<code>episode_key</code> 去重；冷却期内不重复开</dd>
+      <dt>拒绝开火的输入</dt><dd>stale / 有缺口 / warm-up / seed 输入一律保持 <code>unknown</code>，<b>永不触发</b>；seed 模式下 <code>evaluate</code> 与钱包设置写操作返回 409</dd>
+      <dt>定义版本</dt><dd><code>ALERT_DEFINITION_VERSION='alert-1.0.0'</code> 随每条告警存储</dd>
+    </dl>
+  </div>
+</div>
+
+<!-- Reviews: in-flight second workspace -->
+<div class="mod" style="border-color:var(--border-2)">
+  <div class="mhead"><span class="mt"><span class="tag t3">不在 HEAD</span> Customer Review Alpha</span><span class="tag">工作树里正在变动</span><span class="mm">server/reviews/* · shared/review-types.ts · src/api-reviews.ts · src/components/reviews/*</span></div>
+  <div class="mbody">
+    <p>这是仓库里的<b>第二个产品</b>，与 War Tracker 领域完全无关，目前<b>只存在于未提交的工作树里</b>，而且在我通读期间它被删掉又加了回来。它的想法是：消费者硬件公司的 Amazon / Best Buy 评论语气按季度聚合成一条曲线，与公司自己申报的 SEC 财报对照，用 Reddit 当更早的金丝雀——核心假设是<b>评论语气先崩，营收再 miss</b>。</p>
+
+    <div class="note warn">
+      <span class="t">它现在的状态（16:09 核对，随时会变）</span>
+      <b>不在提交里</b>：<code>git ls-tree HEAD</code> 没有这个功能，HEAD 的 <code>VIEWS</code> 是 7 项、路由 95 处、测试文件 15 个。<br>
+      <b>在工作树里（untracked）</b>：<code>server/reviews/</code> 8 个文件（含 <code>routes.ts</code>、<code>service.ts</code>）、<code>src/components/reviews/</code> 4 个组件（含 <code>ReviewTrackerView.tsx</code>）、<code>src/api-reviews.ts</code>、<code>data/reviews.sqlite</code>；<code>server/index.ts</code> 已 <code>registerReviewRoutes(app)</code>，<code>VIEWS</code> 已含 <code>'reviews'</code>，切换器也已回来，路由总数 106 处。<br>
+      <b>还缺</b>：<code>server/reviews.test.ts</code> —— 所以这条链路<b>没有任何测试覆盖</b>（<code>tsc --noEmit</code> 能过，因为 <code>tsconfig</code> 的 <code>include</code> 覆盖了 <code>server/</code>）。
+    </div>
+
+    <h4>如果它完成了，架构会是这样</h4>
+    <div class="flow">
+      <span class="step">CSV / API</span><span class="sep">→</span>
+      <span class="step">routes /import /sniff /fetch-canary</span><span class="sep">→</span>
+      <span class="step">sniffer 列嗅探</span><span class="sep">→</span>
+      <span class="step">jev 评分</span><span class="sep">→</span>
+      <span class="step">service 季度聚合</span><span class="sep">→</span>
+      <span class="step">双轴 ECharts 图</span>
+    </div>
+
+    <dl class="kv">
+      <dt>独立存储</dt><dd>自己的库 <code>data/reviews.sqlite</code>（<code>REVIEWS_DB</code> 可覆盖），6 张表（<code>companies</code>、<code>products</code>、<code>reviews_raw</code>、<code>reviews_scored</code>、<code>company_financials</code>、<code>review_kv</code>），首次打开自动迁移 + 播种，不碰 War Tracker 的任何表</dd>
+      <dt>sniffer.ts</dt><dd>这一块写得最扎实：RFC 4180 CSV 解析（带引号的换行、CRLF、BOM），自动识别正文/日期/评分/标题/作者/已验证列，兼容 Instant Data Scraper、Amazon Reviews Exporter、Webscraper.io，能吃掉乱日期与 <code>a-star-5</code> 这类 CSS 抓取残留，并返回 <code>confidence</code> 与样本行供人工确认</dd>
+      <dt>jev.ts</dt><dd><code>scoreReview()</code> 调 TypeSafe AI 的 <code>typesafe-jev-mini</code>（6s 超时、JSON 模式，密钥 <code>TYPESAFE_API_KEY||JEV_API_KEY</code>），失败回落到<b>确定性的本地启发式</b>。评分字段：<code>tone_score</code>（−2..+2）、<code>is_product_related</code>、<code>primary_reason</code>（defect / quality_decline / price / ergonomics / software / praise / other）、<code>tags</code>；命中缺陷词强制 −2</dd>
+      <dt>季度聚合</dt><dd>日历季度 → 财季标签（按财年末月换算）；4 季度滚动语气基线；<code>delta_tone = avg_tone − baseline</code>；<code>is_sparse</code>（&lt;15 条）、<code>is_negative_swing</code>（Δ &lt; −0.15）、<code>is_miss</code>（负向 swing 且营收 YoY ≤ 0）。阈值定义留在 <code>shared/review-types.ts</code> 的 <code>QuarterlyAggregation</code> 注释里</dd>
+      <dt>seed.ts</dt><dd>三家公司（LOGI / YETI / SN）、4 个 ASIN、8 个季度 LOGI 财报、约 40 条手写评论与评分；<code>companies</code> 非空时不再播种</dd>
+    </dl>
+
+    <div class="note bad" style="margin-bottom:0">
+      <span class="t">⚠ 如果这个功能要收尾，这三处必须先改</span>
+      <b>1) adapter 会伪造数据。</b><code>adapters.ts</code> 的 <code>fetchRedditCanaries</code> / <code>fetchBestBuyReviews</code> 在失败时<b>静默返回合成的"仿真"评论</b>，Reddit 那批还带真实样貌的 reddit.com URL，形状上与真数据无法区分。这与 War Tracker adapter 契约那句"静默 ≠ 失败，绝不用空结果冒充成功"直接冲突。<br>
+      <b>2) 硬编码指标。</b>金丝雀摘要里的 <code>lead_time_days: 52</code> 是写死的，不是算出来的。<br>
+      <b>3) 无治理设施。</b>相比 <code>research/</code> 有 <code>expected_version</code> 乐观锁、append-only 评审表和 <code>research_audit</code>，这条链路是裸 CRUD：没有版本号、没有审计、没有"只有具名评审人能改评估"的约束。
+    </div>
+  </div>
+</div>
+
+<!-- Analysis engine -->
+<div class="mod">
+  <div class="mhead"><span class="mt">⑦ 分析引擎（无 UI，但决定一切）</span><span class="mm">server/geo.ts · link.ts · story.ts · eventtime.ts · equivalence.ts · assets.ts</span></div>
+  <div class="mbody">
+    <p>全部是英语词典/正则/IDF/余弦相似度，<b>没有一个模型</b>。每次命中都能作为证据展示。</p>
+    <div class="tblwrap"><table>
+      <thead><tr><th>文件</th><th>做什么</th><th>关键规则</th></tr></thead>
+      <tbody>
+      <tr><td><code>geo.ts</code></td><td>实体抽取、话题、地理编码、中东相关性、能源/航运焦点判定</td><td>~40 条手写正则（带 <code>me</code> 标记）；地名志分 <code>SPECIFIC_PLACES</code>（point/city/region + 坐标）与 <code>COUNTRY_CENTROIDS</code>（country = 近似）；阿拉伯语/波斯语别名表在代码里<b>自述未经母语者验证</b>；8 条话题正则</td></tr>
+      <tr><td><code>link.ts</code></td><td>事件 ↔ 合约 相关性链接（规则 v2）</td><td>合约显式实体须被事件实体覆盖 ≥66%（经 <code>IMPLIES</code>：IRGC→Iran、Houthis→Yemen、Hezbollah→Lebanon、Hamas→Palestine、IDF→Israel）；≥1 个中东实体；共享话题（diplomacy/politics/humanitarian 这类泛话题要求 ≥2 个实体）；IDF 加权特征词覆盖 ≥0.35；<code>score = 2×实体 + 话题 + 3×覆盖率</code>；上限每事件 6 条、每个 Polymarket 事件 2 条；14 天窗口；合约 <code>start_date</code> 必须早于发布时间</td></tr>
+      <tr><td><code>story.ts</code></td><td>跨 outlet 聚类，防止"同一件事被 N 家报道"被读成 N 次确认</td><td>TF-IDF（标题计两次）+ 平均连接凝聚；只比较<b>可比对</b>的配对（不同 outlet、≤48h、≥1 共享实体）；最佳配对 ≥0.34 且平均 ≥0.27；<code>originGroupOf()</code> 在正文引用 Reuters/AP/AFP/UKMTO/CENTCOM 等时归为 <code>cites:&lt;wire&gt;</code>，否则 <code>pub:&lt;outlet&gt;</code>；由此得出 <code>independence_groups</code> 与 <code>state_only</code></td></tr>
+      <tr><td><code>eventtime.ts</code></td><td>从文本抽取"事情发生的时间"（日精度）</td><td>只认显式过去时英语线索；<code>FUTURE_STRONG/WEAK</code>/<code>ANNIV</code> 抑制将来时与周年表述；裸月日只在 ≤45 天内采用；<b>从不猜小时</b></td></tr>
+      <tr><td><code>equivalence.ts</code></td><td>跨场馆相似合约对照</td><td>只给候选，<b>不合并、不取平均</b>；<code>SCORE_MIN=0.45</code>、到期日差 ≤21 天；<code>verified</code> 只来自人工批准的 <code>data/contract_equivalence.json</code>；硬编码警告文本；规则摘录 420 字符</td></tr>
+      <tr><td><code>assets.ts</code></td><td>把条目关联到策划过的参考资产（霍尔木兹、东西管道、Fujairah、Ras Laffan…）</td><td>只生成 <code>explicitly_named</code> 与 <code>same_reported_location</code>（同名或 ≤25km，且非 country/region）；<code>nearby_context</code>/<code>analyst_inferred</code> <b>故意不生成</b>；每条事实必须引用来源与日期</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- Indicators -->
+<div class="mod">
+  <div class="mhead"><span class="mt">⑧ 指标与关注列表</span><span class="mm">shared/indicators.ts（纯数学） · server/indicators/service.ts（I/O+缓存） · routes.ts</span></div>
+  <div class="mbody">
+    <dl class="kv">
+      <dt>12 个指标</dt><dd><code>change_1h</code>、<code>change_24h</code>、<code>sma</code>、<code>ema</code>、<code>rsi14</code>、<code>macd</code>、<code>bollinger</code>、<code>hourly_movement</code>、<code>baseline_28d</code>、<code>published_change</code>、<code>sma_published</code>、<code>observed_change</code></dd>
+      <dt>注册制</dt><dd>只能请求已注册的 id 与有界参数（<b>没有表达式/脚本/Pine</b>）；未注册 id → 400，未来 <code>asOf</code> → 400</dd>
+      <dt>三个不变量</dt><dd>① 概率进入是 0–1，输出是 %/pp；<b>在完整输入上计算再裁剪</b>，所以裁剪区间不可能改变某个值；② 小时值取每个<b>已结束</b> UTC 小时的最后一个真实采样；缺口 &gt;90 分钟切断连续性并重启 warm-up；③ 算不出来返回 <code>status + reason</code>，绝不填 0</dd>
+      <dt>缓存</dt><dd>进程内 <code>Map</code>（上限 800），键 = 输入指纹 + <code>DEFINITION_VERSION</code>（<code>ind-1.1.0</code>）+ 分钟</dd>
+      <dt>关注列表</dt><dd>上限 8（<code>WATCHLIST_MAX = 8</code>）；卡片含迷你 sparkline 与变化窗口；偏好 <code>{indicators, axis, range, panes}</code> 存服务端，合法化后才接受</dd>
+    </dl>
+  </div>
+</div>
+
+<!-- Briefing? already covered -->
+</section>
+
+<!-- ══════════════════ 07 ══════════════════ -->
+<section id="api">
+<h2><span class="n">07</span>HTTP API 全表</h2>
+<p class="lead-in">共 <b>95 处路由注册 / 77 个唯一路径</b>（按提交 <code>3c8fdcc</code> 统计；工作树里另有 11 处 <code>/api/reviews/*</code> 来自那个正在变动中的第二工作区）。全部返回 JSON，错误统一为 <code>{ error: string }</code>。装配方式：<code>server/index.ts</code> 自己定义核心端点，再依次调用 <b>10 个 <code>register*Routes()</code> 模块</b>。下表按模块分组，一行可合并同一路径的多个 HTTP 方法。</p>
+
+<div class="filterbar" id="apiFilterBar">
+  <input id="apiFilter" type="search" placeholder="过滤路径…（如 feed / wallet / reviews）" aria-label="过滤 API 路径">
+  <span class="count" id="apiCount"></span>
+</div>
+
+<div class="grid2" id="apiGroups">
+  <div class="card" data-api-group>
+    <h4>核心 / index.ts</h4>
+    <div class="tblwrap" style="margin:8px 0 0;border:0">
+    <table><tbody>
+    <tr data-p="/api/events"><td><span class="tag">GET</span></td><td><code>/api/events</code> <span class="small muted">?include_filtered=1&amp;limit≤1000，附 <code>title_en</code></span></td></tr>
+    <tr data-p="/api/events/:id"><td><span class="tag">GET</span></td><td><code>/api/events/:id</code> <span class="small muted">404 文案为"该条目已不在追踪器中"</span></td></tr>
+    <tr data-p="/api/events/:id/translation"><td><span class="tag">GET</span> <span class="tag">POST</span></td><td><code>/api/events/:id/translation</code> <span class="small muted">POST 触发翻译，失败 503</span></td></tr>
+    <tr data-p="/api/markets"><td><span class="tag">GET</span></td><td><code>/api/markets</code> <span class="small muted">仅开盘中，按 24h 量排序</span></td></tr>
+    <tr data-p="/api/markets/:id"><td><span class="tag">GET</span></td><td><code>/api/markets/:id</code></td></tr>
+    <tr data-p="/api/markets/:id/counterparts"><td><span class="tag">GET</span></td><td><code>/api/markets/:id/counterparts</code> <span class="small muted">跨场馆对照</span></td></tr>
+    <tr data-p="/api/markets/:id/history"><td><span class="tag">GET</span></td><td><code>/api/markets/:id/history</code> <span class="small muted">按需抓取 + <code>basis</code> + <code>fetch_state</code></span></td></tr>
+    <tr data-p="/api/sensors"><td><span class="tag">GET</span></td><td><code>/api/sensors</code></td></tr>
+    <tr data-p="/api/assets"><td><span class="tag">GET</span></td><td><code>/api/assets</code> <span class="small muted">原样返回 <code>data/assets.json</code></span></td></tr>
+    <tr data-p="/api/status"><td><span class="tag">GET</span></td><td><code>/api/status</code> <span class="small muted">模式/计数/健康/<b>versions</b>；挂 <code>maybeRefresh()</code></span></td></tr>
+    <tr data-p="/api/health"><td><span class="tag">GET</span></td><td><code>/api/health</code> <span class="small muted">200 = ok|degraded，503 = down</span></td></tr>
+    <tr data-p="/api/refresh"><td><span class="tag">POST</span></td><td><code>/api/refresh</code> <span class="small muted">202 接受；seed 模式 409</span></td></tr>
+    <tr data-p="/api/stream"><td><span class="tag">GET</span></td><td><code>/api/stream</code> <span class="small muted">SSE：refresh / alerts / connected</span></td></tr>
+    </tbody></table></div>
+  </div>
+
+  <div class="card" data-api-group>
+    <h4>Feed · stream.ts / feed.ts</h4>
+    <div class="tblwrap" style="margin:8px 0 0;border:0">
+    <table><tbody>
+    <tr data-p="/api/feed"><td><span class="tag">GET</span></td><td><code>/api/feed</code> <span class="small muted">keyset 分页</span></td></tr>
+    <tr data-p="/api/feed/new"><td><span class="tag">GET</span></td><td><code>/api/feed/new?since=</code></td></tr>
+    <tr data-p="/api/feed/unread"><td><span class="tag">GET</span></td><td><code>/api/feed/unread</code></td></tr>
+    <tr data-p="/api/feed/read-marker"><td><span class="tag">PUT</span></td><td><code>/api/feed/read-marker</code></td></tr>
+    </tbody></table></div>
+  </div>
+
+  <div class="card" data-api-group>
+    <h4>Sources · sourcesapi.ts</h4>
+    <div class="tblwrap" style="margin:8px 0 0;border:0">
+    <table><tbody>
+    <tr data-p="/api/sources"><td><span class="tag">GET</span></td><td><code>/api/sources</code> <span class="small muted">health + config 合并视图</span></td></tr>
+    <tr data-p="/api/sources/:id/config"><td><span class="tag">PUT</span></td><td><code>/api/sources/:id/config</code> <span class="small muted">越界 400；seed 409</span></td></tr>
+    <tr data-p="/api/telegram/config"><td><span class="tag">GET</span> <span class="tag">PUT</span></td><td><code>/api/telegram/config</code> <span class="small muted">频道白名单 ≤20</span></td></tr>
+    </tbody></table></div>
+  </div>
+
+  <div class="card" data-api-group>
+    <h4>Telegram · telegram.ts</h4>
+    <div class="tblwrap" style="margin:8px 0 0;border:0">
+    <table><tbody>
+    <tr data-p="/api/telegram/channels"><td><span class="tag">GET</span></td><td><code>/api/telegram/channels</code></td></tr>
+    <tr data-p="/api/telegram/overview"><td><span class="tag">GET</span></td><td><code>/api/telegram/overview</code> <span class="small muted">?days≤30</span></td></tr>
+    <tr data-p="/api/telegram/posts"><td><span class="tag">GET</span></td><td><code>/api/telegram/posts</code></td></tr>
+    <tr data-p="/api/telegram/media-manifest"><td><span class="tag">GET</span></td><td><code>/api/telegram/media-manifest</code> <span class="small muted">仅 URL</span></td></tr>
+    </tbody></table></div>
+  </div>
+
+  <div class="card" data-api-group>
+    <h4>Indicators · indicators/routes.ts</h4>
+    <div class="tblwrap" style="margin:8px 0 0;border:0">
+    <table><tbody>
+    <tr data-p="/api/indicators/registry"><td><span class="tag">GET</span></td><td><code>/api/indicators/registry</code></td></tr>
+    <tr data-p="/api/markets/:id/indicators"><td><span class="tag">GET</span></td><td><code>/api/markets/:id/indicators</code></td></tr>
+    <tr data-p="/api/markets/:id/reaction"><td><span class="tag">GET</span></td><td><code>/api/markets/:id/reaction?ts=</code> <span class="small muted">事件小时反应 + 基线 P95</span></td></tr>
+    <tr data-p="/api/sensors/:id/indicators"><td><span class="tag">GET</span></td><td><code>/api/sensors/:id/indicators</code></td></tr>
+    <tr data-p="/api/indicators/sensors"><td><span class="tag">GET</span></td><td><code>/api/indicators/sensors</code></td></tr>
+    <tr data-p="/api/indicators/activity"><td><span class="tag">GET</span></td><td><code>/api/indicators/activity</code></td></tr>
+    <tr data-p="/api/watchlist"><td><span class="tag">GET</span> <span class="tag">PUT</span></td><td><code>/api/watchlist</code> <span class="small muted">上限 8；超限 400</span></td></tr>
+    <tr data-p="/api/prefs"><td><span class="tag">GET</span> <span class="tag">PUT</span></td><td><code>/api/prefs</code></td></tr>
+    </tbody></table></div>
+  </div>
+
+  <div class="card" data-api-group>
+    <h4>Wallets · wallets/routes.ts</h4>
+    <div class="tblwrap" style="margin:8px 0 0;border:0">
+    <table><tbody>
+    <tr data-p="/api/wallets"><td><span class="tag">GET</span></td><td><code>/api/wallets</code></td></tr>
+    <tr data-p="/api/wallets/markets/:id/large-trades"><td><span class="tag">GET</span></td><td><code>…/markets/:id/large-trades</code> <span class="small muted">limit≤200</span></td></tr>
+    <tr data-p="/api/wallets/markets/:id/holders"><td><span class="tag">GET</span></td><td><code>…/markets/:id/holders</code></td></tr>
+    <tr data-p="/api/wallets/watch"><td><span class="tag">POST</span></td><td><code>/api/wallets/watch</code> <span class="small muted">201；地址需校验</span></td></tr>
+    <tr data-p="/api/wallets/watch/:wallet"><td><span class="tag">GET</span> <span class="tag">DELETE</span></td><td><code>/api/wallets/watch/:wallet</code></td></tr>
+    <tr data-p="/api/wallets/pilot"><td><span class="tag">PUT</span></td><td><code>/api/wallets/pilot</code></td></tr>
+    <tr data-p="/api/wallets/large-trade-threshold"><td><span class="tag">PUT</span></td><td><code>…/large-trade-threshold</code> <span class="small muted">seed 409</span></td></tr>
+    </tbody></table></div>
+  </div>
+
+  <div class="card" data-api-group>
+    <h4>Alerts · alerts.ts</h4>
+    <div class="tblwrap" style="margin:8px 0 0;border:0">
+    <table><tbody>
+    <tr data-p="/api/alerts"><td><span class="tag">GET</span></td><td><code>/api/alerts</code></td></tr>
+    <tr data-p="/api/alerts/:id/ack"><td><span class="tag">PUT</span></td><td><code>/api/alerts/:id/ack</code></td></tr>
+    <tr data-p="/api/alerts/ack-all"><td><span class="tag">POST</span></td><td><code>/api/alerts/ack-all</code></td></tr>
+    <tr data-p="/api/alerts/rules/:id"><td><span class="tag">PUT</span></td><td><code>/api/alerts/rules/:id</code> <span class="small muted">阈值越界 400</span></td></tr>
+    <tr data-p="/api/alerts/evaluate"><td><span class="tag">POST</span></td><td><code>/api/alerts/evaluate</code> <span class="small muted">seed 409</span></td></tr>
+    </tbody></table></div>
+  </div>
+
+  <div class="card" data-api-group>
+    <h4>Briefing · briefing.ts</h4>
+    <div class="tblwrap" style="margin:8px 0 0;border:0">
+    <table><tbody>
+    <tr data-p="/api/briefing"><td><span class="tag">GET</span></td><td><code>/api/briefing?hours=|since=last</code> <span class="small muted">hours=0 → 400</span></td></tr>
+    <tr data-p="/api/briefing.md"><td><span class="tag">GET</span></td><td><code>/api/briefing.md</code></td></tr>
+    <tr data-p="/api/briefings"><td><span class="tag">GET</span> <span class="tag">POST</span></td><td><code>/api/briefings</code> <span class="small muted">冻结快照 201</span></td></tr>
+    <tr data-p="/api/briefings/:id"><td><span class="tag">GET</span></td><td><code>/api/briefings/:id</code> · <code>…/:id.md</code></td></tr>
+    <tr data-p="/api/briefing/auto"><td><span class="tag">GET</span> <span class="tag">PUT</span></td><td><code>/api/briefing/auto</code> <span class="small muted">每日自动快照（默认关）</span></td></tr>
+    </tbody></table></div>
+  </div>
+
+  <div class="card" data-api-group>
+    <h4>Research · research/routes.ts</h4>
+    <div class="tblwrap" style="margin:8px 0 0;border:0">
+    <table><tbody>
+    <tr data-p="/api/research/source"><td><span class="tag">GET</span></td><td><code>/api/research/source</code> <span class="small muted">按引用解析来源版本</span></td></tr>
+    <tr data-p="/api/research/dossiers"><td><span class="tag">GET</span> <span class="tag">POST</span></td><td><code>/api/research/dossiers</code></td></tr>
+    <tr data-p="/api/research/dossiers/:id"><td><span class="tag">GET</span> <span class="tag">PATCH</span></td><td><code>/api/research/dossiers/:id</code> <span class="small muted">expected_version 不符 409</span></td></tr>
+    <tr data-p="/api/research/dossiers/:id/items"><td><span class="tag">POST</span> <span class="tag">DELETE</span></td><td><code>…/dossiers/:id/items</code> <span class="small muted">幂等附加</span></td></tr>
+    <tr data-p="/api/research/tasks"><td><span class="tag">GET</span> <span class="tag">POST</span></td><td><code>/api/research/tasks</code> · <code>PATCH /tasks/:id</code></td></tr>
+    <tr data-p="/api/research/claims"><td><span class="tag">GET</span> <span class="tag">POST</span></td><td><code>/api/research/claims</code> <span class="small muted">引用非原文子串 → 400</span></td></tr>
+    <tr data-p="/api/research/claims/:id"><td><span class="tag">GET</span></td><td><code>/api/research/claims/:id</code></td></tr>
+    <tr data-p="/api/research/claims/:id/evidence"><td><span class="tag">POST</span> <span class="tag">DELETE</span></td><td><code>…/claims/:id/evidence</code></td></tr>
+    <tr data-p="/api/research/claims/:id/reviews"><td><span class="tag">POST</span></td><td><code>…/claims/:id/reviews</code> <span class="small muted">"supported" 无证据 → 400</span></td></tr>
+    <tr data-p="/api/research/hypotheses"><td><span class="tag">GET</span> <span class="tag">POST</span></td><td><code>/api/research/hypotheses</code> · <code>GET|PATCH /:id</code></td></tr>
+    <tr data-p="/api/research/hypotheses/:id/evidence"><td><span class="tag">POST</span> <span class="tag">DELETE</span></td><td><code>…/hypotheses/:id/evidence</code></td></tr>
+    <tr data-p="/api/research/hypotheses/:id/reviews"><td><span class="tag">POST</span></td><td><code>…/hypotheses/:id/reviews</code></td></tr>
+    <tr data-p="/api/calendar"><td><span class="tag">GET</span> <span class="tag">POST</span></td><td><code>/api/calendar</code> · <code>PATCH /calendar/:id</code></td></tr>
+    <tr data-p="/api/coverage"><td><span class="tag">GET</span></td><td><code>/api/coverage</code> <span class="small muted">window 1–720h</span></td></tr>
+    <tr data-p="/api/observation-targets"><td><span class="tag">GET</span> <span class="tag">PUT</span></td><td><code>/api/observation-targets</code> · <code>…/pins</code></td></tr>
+    </tbody></table></div>
+  </div>
+
+  <div class="card" data-api-group>
+    <h4>Maritime · maritime/routes.ts</h4>
+    <div class="tblwrap" style="margin:8px 0 0;border:0">
+    <table><tbody>
+    <tr data-p="/api/maritime/sources"><td><span class="tag">GET</span></td><td><code>/api/maritime/sources</code></td></tr>
+    <tr data-p="/api/maritime/vessels"><td><span class="tag">GET</span> <span class="tag">POST</span></td><td><code>/api/maritime/vessels</code> <span class="small muted">无来源 → 400</span></td></tr>
+    <tr data-p="/api/maritime/vessels/:id"><td><span class="tag">GET</span></td><td><code>/api/maritime/vessels/:id</code></td></tr>
+    <tr data-p="/api/maritime/vessels/:id/identifiers"><td><span class="tag">POST</span></td><td><code>…/:id/identifiers</code> <span class="small muted">IMO 校验位；重复 409</span></td></tr>
+    <tr data-p="/api/maritime/vessels/:id/attributes"><td><span class="tag">POST</span></td><td><code>…/:id/attributes</code></td></tr>
+    <tr data-p="/api/maritime/mentions/:id/review"><td><span class="tag">POST</span></td><td><code>/api/maritime/mentions/:id/review</code> <span class="small muted">人工确认名称匹配</span></td></tr>
+    <tr data-p="/api/maritime/scan"><td><span class="tag">POST</span></td><td><code>/api/maritime/scan</code></td></tr>
+    <tr data-p="/api/maritime/vessel-types"><td><span class="tag">POST</span></td><td><code>/api/maritime/vessel-types</code></td></tr>
+    </tbody></table></div>
+  </div>
+
+  <div class="card" data-api-group>
+    <h4>不在 HEAD：<code>/api/reviews/*</code>（11 处）</h4>
+    <p class="small" style="margin-bottom:0"><code>companies</code> / <code>products</code> / <code>dashboard</code> / <code>list</code> / <code>sniff</code> / <code>import</code> / <code>score-single</code> / <code>fetch-canary</code> / <code>financials</code> / <code>status</code>。这些端点属于上面那个变动中的第二工作区：<code>server/reviews/routes.ts</code> 已在工作树里重新出现，<code>server/index.ts</code> 也已重新调用 <code>registerReviewRoutes(app)</code>，但提交里没有。注意 <code>/api/reviews/status</code> 会依据环境变量报告 <code>gemini_ready</code> / <code>claude_ready</code>，而 <code>jev.ts</code> 只有 TypeSafe Jev + 本地启发式——<b>能力自述与实现不一致</b>。</p>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════ 08 ══════════════════ -->
+<section id="shared">
+<h2><span class="n">08</span>共享领域模型（shared/）</h2>
+<p class="lead-in">7 个文件、约 1,100 行，<b>前后端都从这里 import</b>——没有代码生成，没有 OpenAPI，类型就是契约。文件头写着"依赖为零，所以 server 和 UI 都能引用"。</p>
+
+<div class="tblwrap">
+<table>
+<thead><tr><th>文件</th><th>行数</th><th>内容</th></tr></thead>
+<tbody>
+<tr><td><code>types.ts</code></td><td>381</td><td>全部 API 返回类型：<code>TrackerEvent</code>、<code>Market</code>、<code>SourceHealth</code>、<code>Status</code>、<code>FeedItem</code>、<code>TgPost</code>、<code>WalletsOverview</code>、<code>AlertsResponse</code>、<code>AssetsFile</code>、<code>SensorSeries</code>、<code>WatchCard</code>、<code>Prefs</code>、<code>ReactionResult</code>…</td></tr>
+<tr><td><code>indicators.ts</code></td><td>392</td><td><b>纯数学</b>：SMA/EMA/RSI/MACD/布林/type-7 分位数/小时聚合。带 <code>IndStatus</code> 与 reason 语义。测试用独立的 Python 实现交叉验证</td></tr>
+<tr><td><code>research.ts</code></td><td>101</td><td>研究空间契约：<code>CLAIM_RULE_VERSION='claim-review-1.0'</code>、<code>SourceVersion</code>、<code>ClaimView</code>、<code>DossierDetail</code>、<code>HypothesisView</code>、<code>CalendarEntryView</code>、<code>CoverageReport</code></td></tr>
+<tr><td><code>briefing.ts</code></td><td>60</td><td>简报结构：分节、<code>Citation</code>、<code>limits[]</code></td></tr>
+<tr><td><code>review-types.ts</code></td><td>144</td><td><span class="tag t3">不在 HEAD</span> 第二工作区的契约（untracked）：<code>QuarterlyAggregation</code>（含 <code>is_negative_swing</code>、<code>is_miss</code> 的阈值定义）、<code>ReviewDashboardSummary</code>、<code>SnifferDetectionResult</code>… 目前只有 <code>server/reviews/*</code> 在用它</td></tr>
+<tr><td><code>maritime.ts</code> / <code>translation.ts</code></td><td>9 / 9</td><td>小而专注的视图契约</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>核心实体：<code>TrackerEvent</code></h3>
+<p>这是整个项目最重要的类型。注意它<b>不是</b>一个"新闻条目"——它是一个<b>带溯源与不确定性标注的声明</b>：</p>
+<pre>interface TrackerEvent {
+  // 身份与溯源
+  id; source_id; source_name; originating_source; feed_key;
+  raw_url; collected_at; timestamp;
+  // 来源立场（永远显示在卡片上）
+  source_affiliation; source_scope; reliability_tier: 'Tier-1'|'Tier-2'|'Tier-3';
+  // 时间诚实性
+  time_precision: 'instant' | 'date';
+  publisher_time_note: string | null;   // 发布时间晚于首次采集时，说明为何放到采集时刻
+  event_time: {start; precision:'day'; basis} | null;  // 文本自述的发生时间，与发布时间分开
+  // 声明状态 —— 只有一种取值
+  claim_status: 'reported';
+  // 修订
+  modified_at: string | null; revision_count: number;
+  // 分析产物（全部可展示为证据）
+  entities; topics; location: {name,lat,lng,precision} | null;
+  vessel_types: {type,label,span}[];
+  focus_energy_shipping: boolean;
+  assets: AssetLink[];
+  // 关联
+  relevant: boolean; linked_contracts: LinkedContract[]; story: StoryInfo | null;
+  title_en?: string | null;
+}</pre>
+<p class="small"><code>claim_status: 'reported'</code> 是个刻意设计：作者没有实现 <code>corroborated</code>，因为在日志里写明"outlet 相似 ≠ 独立验证"。类似地 <code>StoryInfo.independence_groups</code>、<code>state_only</code> 和 <code>note</code> 都是为了让"N 家报道"不被误读。</p>
+</section>
+
+<!-- ══════════════════ 09 ══════════════════ -->
+<section id="frontend">
+<h2><span class="n">09</span>前端设计</h2>
+
+<h3>9.1 路由：手写哈希路由，无 router 库</h3>
+<p><code>navigation.ts</code> 只有 41 行，但把"URL 即状态"做得很完整：</p>
+<pre>VIEWS = ['dashboard','feed','telegram','wallets','alerts','research','sources']
+RESEARCH_TABS = ['briefing','dossiers','hypotheses','upcoming','coverage','places','vessels']
+ContextKey = 'event' | 'market' | 'tab' | 'dossier' | 'hypothesis'
+
+// hash 形如  #research?tab=briefing&dossier=abc
+contextFromHash(hash)   // 校验：值 ≤200 字符、无控制字符、tab 必须在 RESEARCH_TABS 内
+navigateContext(patch, view?, replace?)  // replace 走 history.replaceState + 合成 HashChangeEvent</pre>
+<ul class="small">
+<li><b>所有目的地首次访问后保持挂载</b>：<code>const visited = useRef(new Set(['dashboard']))</code>，然后 <code>hidden={view !== 'feed'}</code>。这样切换标签不会丢掉滚动位置与本地状态。</li>
+<li><b>URL 可分享/可恢复</b>：进入页面时若 hash 里有 <code>event</code>/<code>market</code>，就直接还原；否则自动选中第一条"相关且带合约"的条目。</li>
+</ul>
+
+<h3>9.2 键盘快捷键</h3>
+<div class="tblwrap"><table>
+<thead><tr><th>键</th><th>动作</th></tr></thead>
+<tbody>
+<tr><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> <kbd>5</kbd></td><td>Monitor / Feed / Markets / Research / Sources &amp; alerts（<kbd>6</kbd> <kbd>7</kbd> 是 Research/Sources 的历史别名）</td></tr>
+<tr><td><kbd>b</kbd></td><td>直达 Research → Briefing（每日入口）</td></tr>
+<tr><td><kbd>/</kbd></td><td>聚焦搜索框（dashboard 的 <code>#dashboard-search</code> 或页面上第一个 <code>input[type=search]</code>）</td></tr>
+<tr><td><kbd>j</kbd> / <kbd>k</kbd></td><td>下一条 / 上一条事件（自动切回 Monitor）</td></tr>
+<tr><td><kbd>r</kbd></td><td>Refresh now</td></tr>
+<tr><td><kbd>?</kbd> / <kbd>Esc</kbd></td><td>快捷键帮助 / 关闭</td></tr>
+</tbody>
+</table></div>
+<p class="small"><code>isInputElement()</code> 守卫文本框；带 Ctrl/Cmd/Alt 的组合一律忽略；<code>useGlobalShortcuts</code> 只挂一个 window <code>keydown</code> 并用 ref 持有最新 handler。</p>
+
+<h3>9.3 状态管理：三层，各司其职</h3>
+<div class="grid3">
+  <div class="card">
+    <h4>① 服务器状态</h4>
+    <p class="small" style="margin-bottom:0">组件用 <code>versionKey(status.versions, SOURCE_IDS)</code> 作为 props，签名变了就 refetch。<b>不引入缓存库</b>——"版本号"就是失效协议。</p>
+  </div>
+  <div class="card">
+    <h4>② 跨组件小状态</h4>
+    <p class="small" style="margin-bottom:0"><code>store.ts</code> 里手写的 <code>createStore&lt;T&gt;()</code> + <code>useSyncExternalStore</code>：<code>usePrefs()</code>（服务端持久化，失败时保留本地选择并显示 <code>saveError</code>）与 <code>useWatchlist()</code>（含 <code>isPinned</code>/<code>toggle</code>）。</p>
+  </div>
+  <div class="card">
+    <h4>③ UI 草稿</h4>
+    <p class="small" style="margin-bottom:0"><code>useDraft(key, initial)</code> 把每次改动写进 <code>localStorage['war-tracker-workspace-v1:'+key]</code>；写失败派发 <code>workspace-storage-error</code> 事件，App 显示横幅。<b>草稿只是批注，不是 provider 记录。</b></p>
+  </div>
+</div>
+
+<h4>竞态处理</h4>
+<p class="small">两套机制并存：<code>workspace.ts</code> 的 <code>RequestGeneration</code> 类（<code>next()</code>/<code>isCurrent()</code>，"一次查询世代拥有自己的行、游标、loading 和错误"），以及 App 里 <code>dataRequest</code>/<code>eventRequest</code>/<code>marketRequest</code> 三个 ref。过期响应直接丢弃。</p>
+
+<h3>9.4 数据获取：轮询 + SSE，轮询是真相</h3>
+<pre>// App.tsx 的双通道
+setInterval(tick, status?.refreshing ? 2500 : 20000)   // 自适应轮询
+const sig = `${s.last_refresh_finished_at}|${Object.entries(s.versions).sort()...}`
+if (sig !== lastRefresh.current) { lastRefresh.current = sig; loadData() }   // 渐进刷新
+subscribeStream(evt =&gt; { refresh → 重新拉 status+data; alerts → 拉告警数; connected → 初始化 })</pre>
+<p class="small">刷新状态失败会置 <code>statusFailed</code>，显示"Tracker disconnected — showing cached data"横幅并记录最后联系时间；恢复后自动 <code>restoreRetry++</code> 重载。</p>
+
+<h3>9.5 可视化三件套</h3>
+<div class="tblwrap"><table>
+<thead><tr><th>库</th><th>用在哪</th><th>关键实现细节</th></tr></thead>
+<tbody>
+<tr><td><b>ECharts 6</b></td><td><code>ProbChart</code>（主价格图）、<code>SubPane</code>（RSI/MACD 子图）、<code>SensorPanel</code>、<code>BarMini</code>、<code>ToneRevenueChart</code>（双轴）</td><td>多数用 <code>echarts/core</code> 按需引入（LineChart/ScatterChart/Grid/Tooltip/MarkLine/MarkArea/DataZoom/CanvasRenderer）以瘦身；<b>颜色在渲染时从 CSS 自定义属性读取</b>（<code>getComputedStyle</code>），<code>useChartTheme()</code> 监听 <code>matchMedia</code> 与 <code>data-theme</code> 变更来触发重绘；null 是断点，永不画成 0。<span class="muted">例外：<code>ToneRevenueChart</code> 直接 <code>import * as echarts</code> 打进全量包</span></td></tr>
+<tr><td><b>Leaflet 1.9</b></td><td><code>MapPanel</code>、<code>TelegramView</code> 的 <code>PlaceMap</code></td><td><code>baseMap.ts</code> 用 <code>topojson-client.feature()</code> 渲染打包进仓库的 <code>world-atlas/countries-110m.json</code>，陆地/海面颜色取自 CSS 变量，<b>不需要瓦片服务器</b>（署名中明说）；事件按 <code>name|precision</code> 分组画圆点，国家质心用虚线+半透明表示"近似"；<code>flyTo</code> 响应选中</td></tr>
+<tr><td><b>Cytoscape 3</b></td><td><code>AssetGraph</code>（事件→资产→公司，breadthfirst，禁用缩放）、Telegram <code>Network</code>（cose 力导向，节点大小=出现次数，边宽=共现权重，点击过滤 feed）</td><td>图本身也在 <code>role="img"</code> + <code>aria-label</code> 里说明它画的是什么</td></tr>
+</tbody>
+</table></div>
+
+<h3>9.6 样式：一个 648 行的手写 CSS，无框架</h3>
+<ul class="small">
+<li><b>设计令牌</b>集中在 <code>:root</code>：<code>--bg</code>、<code>--surface-1/2</code>、<code>--text-primary/secondary</code>、<code>--muted</code>、<code>--grid</code>、<code>--border</code>、<code>--series-1..5</code>（图表序列色）、<code>--event</code>、<code>--accent</code>、<code>--ok/warn/bad/up/down</code>、Tier 色 <code>--t1..t3</code>、地图的 <code>--sea/--land/--land-line</code></li>
+<li><b>暗色模式三态</b>：<code>:root[data-theme="dark"]</code>、<code>@media (prefers-color-scheme: dark) :root:not([data-theme="light"])</code>、显式 light 块。主题存在 <code>localStorage['war-tracker-theme']</code>，默认 system</li>
+<li><b>布局</b>：flex + CSS grid，到处 <code>min-width:0</code>；每个面板独立滚动（<code>scrollbar-gutter:stable</code>、<code>overscroll-behavior:contain</code>）；断点 1000 / 760 / 640px</li>
+<li><b>细节</b>：<code>font-variant-numeric: tabular-nums</code>（数字对齐）、<code>@media print</code> + <code>.noprint</code> 让简报可直接打印成 PDF、Leaflet 弹窗有暗色覆盖</li>
+</ul>
+
+<h3>9.7 可访问性与防崩</h3>
+<div class="grid2">
+  <div class="card">
+    <h4>可访问性</h4>
+    <ul class="small" style="margin-bottom:0">
+      <li><code>role="tablist"</code>/<code>tab</code>/<code>radiogroup</code>/<code>dialog</code>/<code>region</code>/<code>alert</code>/<code>status</code>，配 <code>aria-selected</code>/<code>aria-expanded</code>/<code>aria-busy</code>/<code>aria-live="polite"</code></li>
+      <li>每个图表/地图/图都有 <code>role="img"</code> + <code>aria-label</code></li>
+      <li>快捷键弹窗：聚焦关闭按钮、Esc/背景关闭、关闭后恢复焦点</li>
+      <li><b>没有 i18n 框架，也没有 <code>[dir=rtl]</code> 的 RTL 布局 CSS</b>——RTL 是逐元素的 <code>dir</code>/<code>lang</code> 属性</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>防崩与反馈</h4>
+    <ul class="small" style="margin-bottom:0">
+      <li><code>ErrorBoundary</code> 包住<b>每一个</b>面板/视图，带名字 + Retry，一个 bug 不会白屏整个仪表盘</li>
+      <li>toast store：相同文案+类型去重、上限 5 条、hover 暂停/恢复、<code>useSyncExternalStore</code> 暴露</li>
+      <li><code>ActionButton</code> 用 ref 锁保证一个控件同时只有一个写操作在飞，并带 <code>aria-busy</code></li>
+    </ul>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════ 10 ══════════════════ -->
+<section id="files">
+<h2><span class="n">10</span>文件索引</h2>
+<p class="lead-in">按目录分组、可搜索。第三列是该文件最值得注意的导出符号。</p>
+
+<div class="filterbar" id="fileFilterBar">
+  <input id="fileFilter" type="search" placeholder="搜索文件名 / 职责 / 导出符号…（例如 story、scheduler、review）" aria-label="搜索文件索引">
+  <button class="fbtn on" data-fg="all" type="button">全部</button>
+  <button class="fbtn" data-fg="server" type="button">server 根</button>
+  <button class="fbtn" data-fg="sources" type="button">sources</button>
+  <button class="fbtn" data-fg="sub" type="button">子域</button>
+  <button class="fbtn" data-fg="client" type="button">客户端</button>
+  <button class="fbtn" data-fg="shared" type="button">shared</button>
+  <button class="fbtn" data-fg="scripts" type="button">scripts</button>
+  <span class="count" id="fileCount"></span>
+</div>
+
+<div class="tblwrap">
+<table class="filetable" id="fileTable">
+<thead><tr><th>文件</th><th>职责</th><th>关键导出</th></tr></thead>
+<tbody>
+<!-- server root -->
+<tr data-g="server"><td>server/index.ts</td><td>进程入口；定义核心端点并装配 11 个路由注册模块与 3 个后台作业；dev 用 Vite 中间件、prod 托管 dist；stale-while-revalidate 与 10 分钟兜底定时器；SIGINT/SIGTERM 释放租约</td><td>—（副作用式装配）</td></tr>
+<tr data-g="server"><td>server/db.ts</td><td>唯一主库连接 + 全部 DDL + 幂等迁移；调用 migrateResearch/migrateMaritime</td><td><code>db</code>, <code>DB_PATH</code>, <code>kvGet/kvSet</code>, <code>tx</code></td></tr>
+<tr data-g="server"><td>server/registry.ts</td><td>31 个新闻/官方/海事源的静态定义（tier、affiliation、scope、interval、budget、blockedReason）+ 市场/传感器/钱包/Telegram 定义</td><td><code>NEWS_SOURCES</code>, <code>SENSOR_SOURCES</code>, <code>WALLET_SOURCES</code></td></tr>
+<tr data-g="server"><td>server/ingest.ts</td><td>主刷新周期：单飞 + 租约，逐源采集，然后重建链接/故事、匹配 Telegram、评估告警、afterCollection</td><td><code>runIngest</code>, <code>isRefreshing</code>, <code>lastRefreshFinishedAt</code></td></tr>
+<tr data-g="server"><td>server/scheduler.ts</td><td>主周期之外的后台作业调度器（首次 +5s，之后每 60s，<code>.unref()</code>）</td><td><code>registerJob</code>, <code>runJob</code>, <code>runAllJobs</code>, <code>startScheduler</code></td></tr>
+<tr data-g="server"><td>server/sourcejob.ts</td><td>所有采集的统一闸门：到期 → 熔断 → 预算 → 记录</td><td><code>runSourceJob</code></td></tr>
+<tr data-g="server"><td>server/sourceconfig.ts</td><td>每源节奏与请求预算的持久化覆盖值；越界拒绝而非钳制；抖动与到期计算</td><td><code>setConfig</code>, <code>boundsOf</code>, <code>dueAt</code>, <code>jitterFrac</code></td></tr>
+<tr data-g="server"><td>server/sourcehealth.ts</td><td>合并 registry + source_health + 熔断器 + 新鲜度策略，产出 UI 用的健康数组</td><td><code>sourceHealth</code></td></tr>
+<tr data-g="server"><td>server/lease.ts</td><td>跨进程租约，支持"持有者 PID 已死则抢占"</td><td><code>withLease</code>, <code>acquireLease</code>, <code>releaseAllLeases</code></td></tr>
+<tr data-g="server"><td>server/breaker.ts</td><td>持久化熔断器，指数冷却上限 6 小时</td><td><code>isOpen</code>, <code>recordFailure</code>, <code>BREAKER_THRESHOLD</code></td></tr>
+<tr data-g="server"><td>server/http.ts</td><td>礼貌 HTTP 客户端：per-host 限速、重试退避、<code>Retry-After</code>、AsyncLocalStorage 请求预算</td><td><code>fetchText</code>, <code>fetchJson</code>, <code>withBudget</code>, <code>BudgetExceeded</code></td></tr>
+<tr data-g="server"><td>server/adapters.ts</td><td>adapter 注册表与全部契约文档</td><td><code>ADAPTERS</code>, <code>adapterFor</code></td></tr>
+<tr data-g="server"><td>server/runlog.ts</td><td>采集遥测：写 collection_attempts、更新 source_health、记录用量与来源集变更</td><td><code>recordRun</code>, <code>recordUsage</code>, <code>recordSourceSetChange</code></td></tr>
+<tr data-g="server"><td>server/versions.ts</td><td>每个源的数据版本号，前端失效协议的来源</td><td><code>bump</code>, <code>versions</code></td></tr>
+<tr data-g="server"><td>server/feed.ts</td><td>统一流：跨平台稳定身份、keyset 分页、未读计数与"新到"判定</td><td><code>readFeed</code>, <code>countNew</code>, <code>unreadCounts</code>, <code>registerFeedRoutes</code></td></tr>
+<tr data-g="server"><td>server/stream.ts</td><td>SSE 端点与广播；只推通知不推载荷</td><td><code>broadcastStreamEvent</code>, <code>registerStreamRoutes</code>, <code>closeAllStreamClients</code></td></tr>
+<tr data-g="server"><td>server/sourcesapi.ts</td><td>Sources 视图的聚合接口 + Telegram 频道白名单</td><td><code>registerSourcesRoutes</code>, <code>telegramChannels</code></td></tr>
+<tr data-g="server"><td>server/history.ts</td><td>按需抓取价格历史；seed 模式直接返回 'seed' 不联网</td><td><code>ensureAnyHistory</code>, <code>HISTORY_BASIS</code></td></tr>
+<tr data-g="server"><td>server/seed.ts</td><td>导出/载入离线演示快照（真实抓取过的数据，不含 Telegram 文本）</td><td><code>exportSeed</code>, <code>loadSeed</code>, <code>SEED_PATH</code></td></tr>
+<tr data-g="server"><td>server/cli.ts</td><td>命令行采集：<code>npm run ingest</code>，任一源失败则退出码 1</td><td>—</td></tr>
+<tr data-g="server"><td>server/tgscheduler.ts</td><td>Telegram 专用作业：按频道租约 + 熔断 + 抖动</td><td><code>runTelegramCycle</code>, <code>channelDueAt</code>, <code>telegramBusy</code></td></tr>
+<tr data-g="server"><td>server/telegram.ts</td><td>Telegram 频道/帖子读取、与新闻交叉匹配的 API</td><td><code>overview</code>, <code>matchTelegramToEvents</code>, <code>registerTelegramRoutes</code></td></tr>
+<tr data-g="server"><td>server/telegram-analysis.ts</td><td>帖子的规则分析：语言、标记、署名归属、报告类型。无模型</td><td><code>analyzePost</code>, <code>reportKind</code>, <code>extractAttributions</code></td></tr>
+
+<!-- analysis -->
+<tr data-g="server"><td>server/geo.ts <span class="tag acc">核心</span></td><td>实体/话题抽取、地名志地理编码、中东相关性、能源航运焦点判定</td><td><code>extractEntities</code>, <code>extractTopics</code>, <code>geolocate</code>, <code>isMiddleEastRelevant</code>, <code>ENTITIES</code></td></tr>
+<tr data-g="server"><td>server/link.ts <span class="tag acc">核心</span></td><td>事件↔合约相关性规则 v2（覆盖率 + IDF 特征词 + 话题）</td><td><code>matchPair</code>, <code>rebuildLinks</code>, <code>buildIdf</code>, <code>termCoverage</code></td></tr>
+<tr data-g="server"><td>server/story.ts <span class="tag acc">核心</span></td><td>跨 outlet 聚类与独立来源分组，防止"多家报道 = 多次确认"</td><td><code>rebuildStories</code>, <code>storyFor</code>, <code>originGroupOf</code>, <code>cosine</code></td></tr>
+<tr data-g="server"><td>server/eventtime.ts</td><td>从文本抽取日精度的"发生时间"，拒绝将来时与周年表述</td><td><code>extractEventTime</code></td></tr>
+<tr data-g="server"><td>server/equivalence.ts</td><td>跨场馆相似合约对照，只给候选不合并；人工批准才 verified</td><td><code>findCounterparts</code>, <code>counterpartsFor</code>, <code>loadVerified</code></td></tr>
+<tr data-g="server"><td>server/assets.ts</td><td>把条目关联到策划过的参考资产，只允许"显式命名"与"同一报告位置"</td><td><code>linkAssets</code>, <code>loadAssets</code></td></tr>
+<tr data-g="server"><td>server/translation.ts</td><td>MyMemory 机翻 + 缓存 + 每日 4500 字符预算（网络前扣除）；阿拉伯语与波斯语标题后台自动翻译</td><td><code>createNewsTranslator</code>, <code>cachedHeadlines</code>, <code>registerHeadlineJob</code></td></tr>
+<tr data-g="server"><td>server/briefing.ts <span class="tag acc">核心</span></td><td>规则生成、逐句带引用的变化简报 + Markdown 导出 + 可冻结快照</td><td><code>buildBriefing</code>, <code>toMarkdown</code>, <code>saveBriefing</code>, <code>MOVE_PP</code></td></tr>
+<tr data-g="server"><td>server/alerts.ts</td><td>5 条规则的告警状态机：只在 normal→abnormal 开火，恢复后重新武装</td><td><code>RULES</code>, <code>evaluateAlerts</code>, <code>setRule</code>, <code>registerAlertRoutes</code></td></tr>
+
+<!-- sources -->
+<tr data-g="sources"><td>server/sources/rss.ts</td><td><b>所有 RSS 类源的公共落库路径</b>：解析、清洗、规范 URL、outlet 归一、事务内批量插入、修订检测、raw_cache</td><td><code>parseFeed</code>, <code>storeParsed</code>, <code>ingestParsed</code>, <code>outletKey</code>, <code>cacheRaw</code></td></tr>
+<tr data-g="sources"><td>server/sources/polymarket.ts</td><td>Gamma + CLOB：市场发现、报价选择（中点仅双向报价时使用，否则标注 last_trade）、历史抓取</td><td><code>ingestPolymarket</code>, <code>chooseQuote</code>, <code>ensureHistory</code></td></tr>
+<tr data-g="sources"><td>server/sources/kalshi.ts</td><td>Kalshi 公开市场数据与蜡烛历史；单位是 contracts</td><td><code>ingestKalshi</code>, <code>kalshiQuote</code>, <code>ensureKalshiHistory</code></td></tr>
+<tr data-g="sources"><td>server/sources/telegram.ts</td><td>公开频道预览分页、缺口开闭与追赶游标</td><td><code>pollChannel</code>, <code>openGaps</code>, <code>collectionLag</code>, <code>LATEST_PAGE_CAP</code></td></tr>
+<tr data-g="sources"><td>server/sources/sensors.ts</td><td>4 条数值序列：PortWatch 通行量、FRED Brent/WTI、OpenSky 空域、IODA 连通性。缺失值省略而非补 0</td><td><code>ingestPortWatch</code>, <code>ingestFred</code>, <code>readSensors</code>, <code>SENSORS</code></td></tr>
+<tr data-g="sources"><td>server/sources/inbox.ts</td><td>把用户放进 <code>data/inbox/</code> 的 .eml 通告转为条目；发件人 tier 来自 senders.json</td><td><code>ingestInbox</code>, <code>parseEml</code>, <code>emailItem</code></td></tr>
+<tr data-g="sources"><td>server/sources/easa.ts</td><td>EASA 冲突区公告（CZIB）：列表 + 详情页，日精度</td><td><code>ingestEasa</code>, <code>czibItems</code>, <code>parseCzibDetail</code></td></tr>
+<tr data-g="sources"><td>server/sources/fcdo.ts</td><td>英国 FCDO 旅行建议变更日志，逐国隔离，按国家更新到分钟</td><td><code>ingestFcdo</code>, <code>fcdoItems</code></td></tr>
+<tr data-g="sources"><td>server/sources/ofac.ts</td><td>美国 OFAC 近期行动（仅标题，日期级）</td><td><code>ingestOfac</code>, <code>parseOfacListing</code></td></tr>
+<tr data-g="sources"><td>server/sources/nga.ts</td><td>NGA 广播航行警告（HYDROPAC/HYDROLANT），解析 DTG 时间组</td><td><code>ingestNga</code>, <code>ngaItems</code>, <code>parseDtg</code></td></tr>
+<tr data-g="sources"><td>server/sources/maersk.ts</td><td>Maersk 中东通告：抽文章链接 + 解析正文（单承运人 scope 在 UI 明示）</td><td><code>ingestMaersk</code>, <code>extractArticleLinks</code></td></tr>
+<tr data-g="sources"><td>server/sources/gnews.ts</td><td>Google News 标题发现，<b>publisher 决定 tier</b>，只保留标题与链接</td><td><code>ingestGoogleNews</code>, <code>publisherTier</code></td></tr>
+
+<!-- subdomains -->
+<tr data-g="sub"><td>server/indicators/service.ts</td><td>指标服务：注册表、输入装载、进程内缓存、关注列表、偏好校验、事件反应</td><td><code>marketIndicators</code>, <code>eventReaction</code>, <code>DEFS</code>, <code>sanitizePrefs</code></td></tr>
+<tr data-g="sub"><td>server/indicators/routes.ts</td><td>指标/关注列表/偏好/活动 8 个端点</td><td><code>registerIndicatorRoutes</code></td></tr>
+<tr data-g="sub"><td>server/research/schema.ts</td><td>研究空间 16 张表的迁移</td><td><code>migrateResearch</code></td></tr>
+<tr data-g="sub"><td>server/research/refs.ts</td><td><b>溯源核心</b>：来源引用解析、不可变版本捕获、审计</td><td><code>captureVersion</code>, <code>resolveRef</code>, <code>audit</code>, <code>recaptureAttached</code></td></tr>
+<tr data-g="sub"><td>server/research/claims.ts</td><td>主张：必须逐字引用原文；评估需要匹配证据 + 评审人 + 理由</td><td><code>createClaim</code>, <code>reviewClaim</code>, <code>RELATIONSHIPS</code></td></tr>
+<tr data-g="sub"><td>server/research/dossiers.ts</td><td>卷宗/条目/任务；时间线、分歧、建议；乐观锁</td><td><code>createDossier</code>, <code>attachItem</code>, <code>timeline</code>, <code>suggestions</code></td></tr>
+<tr data-g="sub"><td>server/research/hypotheses.ts</td><td>假设与证据关系；评估只能写入 append-only 决策表</td><td><code>createHypothesis</code>, <code>reviewHypothesis</code></td></tr>
+<tr data-g="sub"><td>server/research/calendar.ts</td><td>日历条目 + provider 到期日镜像 + 时区处理（默认 Asia/Hong_Kong）</td><td><code>syncProviderDates</code>, <code>zonedToUtc</code>, <code>dayInterval</code></td></tr>
+<tr data-g="sub"><td>server/research/coverage.ts</td><td>覆盖率报告 + 启动时校验 registry 集合变化</td><td><code>coverageReport</code>, <code>checkRegistrySet</code></td></tr>
+<tr data-g="sub"><td>server/research/targets.ts</td><td>地点观测目标与钉选</td><td><code>observationTargets</code>, <code>setPinnedTargets</code></td></tr>
+<tr data-g="sub"><td>server/research/hooks.ts</td><td>采集后钩子：重捕获版本 + 日历同步 + 船只扫描</td><td><code>afterCollection</code></td></tr>
+<tr data-g="sub"><td>server/research/routes.ts</td><td>研究空间全部端点</td><td><code>registerResearchRoutes</code></td></tr>
+<tr data-g="sub"><td>server/wallets/collect.ts</td><td>4 个同步作业：增量拉取、缺口回补、持仓/大户/排行榜快照</td><td><code>syncNewest</code>, <code>recoverGaps</code>, <code>registerWalletJobs</code></td></tr>
+<tr data-g="sub"><td>server/wallets/parse.ts</td><td>上游无唯一 id → 复合键 + 序号消歧；五个 parse 函数</td><td><code>parseTrades</code>, <code>parsePositions</code>, <code>isAddress</code>, <code>API_VERSION</code></td></tr>
+<tr data-g="sub"><td>server/wallets/store.ts</td><td>钱包数据落库（唯一写入者）、同步状态、关注与试点市场</td><td><code>insertTrades</code>, <code>putSync</code>, <code>addWatch</code>, <code>MAX_WATCHED</code></td></tr>
+<tr data-g="sub"><td>server/wallets/analytics.ts</td><td>大额成交筛选、净成交额、大户榜、覆盖度、试视图</td><td><code>largeTrades</code>, <code>netTradeValue</code>, <code>walletDetail</code>, <code>overview</code></td></tr>
+<tr data-g="sub"><td>server/wallets/routes.ts</td><td>钱包视图 7 个端点</td><td><code>registerWalletRoutes</code></td></tr>
+<tr data-g="sub"><td>server/maritime/vessels.ts</td><td>船舶目录：IMO 校验位、标识符冲突 409 不合并、提及扫描与人工确认</td><td><code>validImo</code>, <code>addIdentifier</code>, <code>scanMentions</code>, <code>reviewMention</code></td></tr>
+<tr data-g="sub"><td>server/maritime/types.ts</td><td>从文本抽取船型（只描述用词，不代表货物/船东/状态）</td><td><code>extractVesselTypes</code>, <code>vesselTypeSummary</code></td></tr>
+<tr data-g="sub"><td>server/maritime/schema.ts</td><td>海事 5 张表迁移</td><td><code>migrateMaritime</code></td></tr>
+<tr data-g="sub"><td>server/reviews/ <span class="tag t3">不在 HEAD</span></td><td><b>第二工作区（untracked，通读期间被删又被加回）。</b>最后核对时 8 个文件：<code>schema.ts</code>（6 张表迁移）、<code>db.ts</code>（独立库连接 + 自动播种）、<code>sniffer.ts</code>（最扎实的文件：RFC 4180 CSV 解析 + 自动列识别 + 抓取插件兼容）、<code>jev.ts</code>（TypeSafe Jev 评分 + 本地启发式回落）、<code>seed.ts</code>（3 公司 / 4 ASIN / 8 季度财报 / ~40 条手写评论）、<code>adapters.ts</code>（Reddit / Best Buy 金丝雀，<b>失败时返回合成数据</b>）、<code>routes.ts</code>（11 个端点）、<code>service.ts</code>（季度聚合）。<code>reviews.test.ts</code> 尚未出现</td><td><code>migrateReviews</code>, <code>scoreReview</code>, <code>sniffAndParseReviews</code>, <code>seedReviewsDatabase</code>, <code>registerReviewRoutes</code>, <code>getProductDashboardSummary</code></td></tr>
+<tr data-g="sub"><td>server/review/pairs.ts</td><td><span class="muted">注意：单数目录，与 reviews 无关</span>。跨场馆配对的人工批准闸门，供 review-kit CLI 使用</td><td><code>approvePairs</code>, <code>wilson</code>, <code>approvable</code></td></tr>
+
+<!-- client -->
+<tr data-g="client"><td>src/App.tsx</td><td>全局面板装配：轮询 + SSE、作品集草稿、视图挂载保持、所有回调与选择状态</td><td><code>App</code></td></tr>
+<tr data-g="client"><td>src/navigation.ts</td><td>哈希路由与 URL 上下文校验</td><td><code>useViewNavigation</code>, <code>navigateContext</code>, <code>RESEARCH_TABS</code></td></tr>
+<tr data-g="client"><td>src/api.ts</td><td>~90 个端点的薄封装 + EventSource 订阅</td><td><code>api</code>, <code>subscribeStream</code></td></tr>
+<tr data-g="client"><td>src/api-reviews.ts <span class="tag t3">不在 HEAD</span></td><td>第二工作区的专用客户端（11 个端点，untracked）</td><td><code>reviewsApi</code></td></tr>
+<tr data-g="client"><td>src/store.ts</td><td>prefs 与 watchlist 两个外部存储 + versionKey 工具</td><td><code>usePrefs</code>, <code>useWatchlist</code>, <code>versionKey</code></td></tr>
+<tr data-g="client"><td>src/workspace.ts</td><td>localStorage 草稿 + 竞态守卫类 + 本地日期时间工具</td><td><code>useDraft</code>, <code>RequestGeneration</code>, <code>validLocalDateTime</code></td></tr>
+<tr data-g="client"><td>src/shortcuts.ts</td><td>全局键盘处理与快捷键清单</td><td><code>useGlobalShortcuts</code>, <code>VIEW_KEY_MAP</code>, <code>SHORTCUT_LIST</code></td></tr>
+<tr data-g="client"><td>src/toast.ts / Toast.tsx</td><td>去重、限量、可暂停的 toast 存储与容器</td><td><code>toast</code>, <code>useToasts</code>, <code>ToastContainer</code></td></tr>
+<tr data-g="client"><td>src/components/StatusBar.tsx</td><td>顶栏（单行）：5 个目的地标签、源健康汇总弹层（按 kind 分组 + 每个源的状态/新鲜度 tooltip）、刷新按钮、⋯ 菜单（主题 三态、快捷键）。<b>工作区切换器已随 customer-review 一起移除</b></td><td><code>StatusBar</code>, <code>type View</code></td></tr>
+<tr data-g="client"><td>src/components/EventList.tsx</td><td>Monitor 左栏：搜索、过滤折叠、卡片（Tier 徽章、RTL、合约价格与 24h 变动）</td><td><code>EventList</code>, <code>TierBadge</code></td></tr>
+<tr data-g="client"><td>src/components/RightPanel.tsx</td><td>详细监控面板：合约头、跨场馆对照、指标、图表+叠加+子图、反应表、4 个下半页标签</td><td><code>RightPanel</code></td></tr>
+<tr data-g="client"><td>src/components/SimpleDetail.tsx</td><td>默认简版详情：头条 + 合约选择器 + 单图 + 存入卷宗</td><td><code>SimpleDetail</code></td></tr>
+<tr data-g="client"><td>src/components/ProbChart.tsx</td><td>主价格图：发布时刻标线、叠加、大额成交地毯、区间、缩放、0-100 轴</td><td><code>ProbChart</code></td></tr>
+<tr data-g="client"><td>src/components/SubPane.tsx</td><td>RSI/MACD 子图，与主图共享缩放窗口</td><td><code>SubPane</code></td></tr>
+<tr data-g="client"><td>src/components/IndicatorControl.tsx</td><td>叠加与子图开关、坐标轴模式、"未保存"提示</td><td><code>IndicatorControl</code>, <code>OVERLAYS</code>, <code>PANES</code></td></tr>
+<tr data-g="client"><td>src/components/MapPanel.tsx</td><td>Leaflet 事件地图 + 参考资产；按位置精度分组样式</td><td><code>MapPanel</code></td></tr>
+<tr data-g="client"><td>src/components/baseMap.ts</td><td>用打包的 world-atlas 拓扑数据建底图，无瓦片服务器</td><td><code>makeBaseMap</code></td></tr>
+<tr data-g="client"><td>src/components/FeedView.tsx</td><td>统一流：类型标签、过滤、游标分页、"N new items" 缓冲、未读标记</td><td><code>FeedView</code></td></tr>
+<tr data-g="client"><td>src/components/TelegramView.tsx</td><td>Telegram 分析：概览图表、实体网络（Cytoscape）、地点地图、逐帖核对、媒体清单</td><td><code>TelegramView</code></td></tr>
+<tr data-g="client"><td>src/components/WalletsView.tsx</td><td>Markets 视图：大额成交带、试点市场与大户、被关注钱包、净额表、排行榜</td><td><code>WalletsView</code></td></tr>
+<tr data-g="client"><td>src/components/WatchlistBar.tsx</td><td>钉选卡片条 + 内联 SVG sparkline</td><td><code>WatchlistBar</code></td></tr>
+<tr data-g="client"><td>src/components/SourcesView.tsx</td><td>采集设置编辑器 + Telegram 白名单 + 缺口/延迟</td><td><code>SourcesView</code></td></tr>
+<tr data-g="client"><td>src/components/AlertsView.tsx</td><td>告警列表与规则编辑、确认</td><td><code>AlertsView</code></td></tr>
+<tr data-g="client"><td>src/components/SensorPanel.tsx</td><td>传感器序列小图面板</td><td><code>SensorPanel</code></td></tr>
+<tr data-g="client"><td>src/components/AssetGraph.tsx</td><td>事件→资产→公司 的 Cytoscape 关系图</td><td><code>AssetGraph</code></td></tr>
+<tr data-g="client"><td>src/components/ErrorBoundary.tsx</td><td>带名字与 Retry 的面板级错误边界</td><td><code>ErrorBoundary</code></td></tr>
+<tr data-g="client"><td>src/components/ActionButton.tsx</td><td>单飞写操作按钮（ref 锁 + aria-busy）</td><td><code>ActionButton</code></td></tr>
+<tr data-g="client"><td>src/components/ShortcutsModal.tsx / SubNav.tsx / SubPane.tsx / NewsTranslation.tsx / LocalDateTimeInput.tsx / useChartTheme.ts / charts.tsx / format.ts / export.ts / clipboard.ts</td><td>零散共用件：快捷键弹窗、二级标签、机翻按钮、本地时间输入、图表主题失效钩子、迷你柱图、格式化、CSV 导出（空值留空不写 0）、剪贴板回退</td><td>—</td></tr>
+<tr data-g="client"><td>src/components/research/ResearchView.tsx</td><td>Research 的 7 个标签壳（保持挂载）</td><td><code>ResearchView</code></td></tr>
+<tr data-g="client"><td>src/components/research/Briefing.tsx</td><td>简报渲染：分节、可点击的编号引用跳转到来源表、Markdown 下载、打印、冻结快照</td><td><code>Briefing</code></td></tr>
+<tr data-g="client"><td>src/components/research/Dossiers.tsx</td><td>卷宗：时间线、条目附加、任务、主张与评审，带乐观锁与逐记录草稿</td><td><code>Dossiers</code></td></tr>
+<tr data-g="client"><td>src/components/research/Hypotheses.tsx</td><td>假设与证据/评审，同样的版本冲突处理</td><td><code>Hypotheses</code></td></tr>
+<tr data-g="client"><td>src/components/research/Upcoming.tsx</td><td>月历网格 + 列表（387 行），条目创建与编辑</td><td><code>Upcoming</code></td></tr>
+<tr data-g="client"><td>src/components/research/Coverage.tsx / Places.tsx / Vessels.tsx</td><td>覆盖率、钉选地点、船舶目录与提及确认</td><td>—</td></tr>
+<tr data-g="client"><td>src/components/research/SourceReader.tsx</td><td>从原文选区引用（≤600 字符）+ 捕获版本前后对比</td><td><code>SourceReader</code></td></tr>
+<tr data-g="client"><td>src/components/research/EvidencePicker.tsx</td><td>带 15s 模块缓存的来源检索器</td><td><code>EvidencePicker</code></td></tr>
+<tr data-g="client"><td>src/components/reviews/ <span class="tag t3">不在 HEAD</span></td><td>第二工作区的组件（untracked）。最后核对时有 3 个：<code>ToneRevenueChart</code>（双轴 ECharts：季度语气 + 4Q 基线 + Δ 柱 + Reddit 金丝雀 + 营收 YoY）、<code>ReviewTable</code>（可展开逐条评论 + 单条重评）、<code>ReviewIngesterModal</code>（扩展说明 / 拖拽 CSV / canary 抓取）。<b><code>ReviewTrackerView.tsx</code>（外壳）当时还没出现</b>，所以这个视图仍进不去</td><td><code>ToneRevenueChart</code>, <code>ReviewTable</code>, <code>ReviewIngesterModal</code></td></tr>
+<tr data-g="client"><td>src/styles.css</td><td>648 行手写设计令牌系统：三态暗色、grid 布局、断点、打印样式、Leaflet 暗色覆盖</td><td>—</td></tr>
+
+<!-- shared -->
+<tr data-g="shared"><td>shared/types.ts</td><td>全部 API 返回类型（381 行）</td><td><code>TrackerEvent</code>, <code>Market</code>, <code>Status</code>, <code>FeedItem</code>, <code>SourceHealth</code></td></tr>
+<tr data-g="shared"><td>shared/indicators.ts</td><td>纯指标数学 + <code>IndStatus</code> 语义（392 行）</td><td>SMA/EMA/RSI/MACD/布林/分位数</td></tr>
+<tr data-g="shared"><td>shared/research.ts</td><td>研究空间契约与规则版本</td><td><code>CLAIM_RULE_VERSION</code>, <code>ClaimView</code>, <code>DossierDetail</code></td></tr>
+<tr data-g="shared"><td>shared/briefing.ts / review-types.ts / maritime.ts / translation.ts</td><td>简报结构 / Reviews 类型 / 船舶视图 / 翻译小契约</td><td>—</td></tr>
+
+<!-- scripts -->
+<tr data-g="scripts"><td>scripts/acceptance.ts</td><td>29 条验收标准的自动矩阵，<b>在数据库副本上跑</b>，输出 Markdown 报告</td><td>341 行</td></tr>
+<tr data-g="scripts"><td>scripts/review-kit.ts</td><td>人工评审套件 CLI：链接基准打分（Wilson 95% 区间）、跨场馆配对批准</td><td>137 行</td></tr>
+<tr data-g="scripts"><td>scripts/smoke-sources.ts</td><td>候选源的礼貌可达性探测 → source_registry.json</td><td>96 行</td></tr>
+<tr data-g="scripts"><td>scripts/asset-review.ts</td><td>参考资产评审表的导出/导入（assets.json 只由人手改）</td><td>56 行</td></tr>
+<tr data-g="scripts"><td>scripts/reanalyze.ts</td><td>规则变更后重算实体/话题/地点/相关性（不联网）</td><td>27 行</td></tr>
+<tr data-g="scripts"><td>scripts/replay.ts · seed-export.ts · offline-check.ts · idempotence-check.ts · eval-links.ts · review-*.ts</td><td>解析器回归重放、种子导出、离线校验、幂等校验、链接评测、各类人工复核打印</td><td>—</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<!-- ══════════════════ 11 ══════════════════ -->
+<section id="quality">
+<h2><span class="n">11</span>工程与质量保障</h2>
+
+<h3>11.1 npm scripts = 全部工具链</h3>
+<div class="tblwrap"><table>
+<thead><tr><th>命令</th><th>做什么</th></tr></thead>
+<tbody>
+<tr><td><code>npm run dev</code></td><td><code>tsx watch server/index.ts</code> → Express + Vite 中间件，<b>单一端口 5173</b>，HMR</td></tr>
+<tr><td><code>npm start</code></td><td><code>vite build</code> 后以 production 模式起服务，托管 <code>dist/</code> + SPA fallback</td></tr>
+<tr><td><code>npm test</code></td><td><code>tsx --test server/*.test.ts</code> → <b>151 个测试，15 个文件</b>（本次实测 151 pass / 0 fail，1.9s）。功能移除前为 166 / 16</td></tr>
+<tr><td><code>npm run typecheck</code></td><td><code>tsc --noEmit</code>，覆盖 server / src / shared / scripts</td></tr>
+<tr><td><code>npm run check</code></td><td>typecheck + test + production build 三连</td></tr>
+<tr><td><code>npm run acceptance</code></td><td>29 条验收标准矩阵 → <code>docs/ACCEPTANCE_REPORT_v2.md</code></td></tr>
+<tr><td><code>npm run demo</code></td><td><b>离线演示</b>，端口 5174，从种子加载，不联网，明确标注 "DEMO SEED — not live"</td></tr>
+<tr><td><code>npm run ingest</code></td><td>命令行跑一次刷新，打印逐源结果，任一失败退出码 1</td></tr>
+<tr><td><code>npm run reanalyze</code> / <code>replay</code></td><td>规则变更后重算 / 用 raw_cache 离线复现解析</td></tr>
+<tr><td><code>npm run smoke:sources</code></td><td>候选源的礼貌探测（含被屏蔽者，不绕过）</td></tr>
+</tbody>
+</table></div>
+
+<h3>11.2 测试策略</h3>
+<ul>
+<li><b>数据库隔离</b>：11 个测试文件（共 15 个）在 import 之前就设 <code>process.env.TRACKER_DB = mkdtempSync(...)</code>，所以绝不碰 <code>data/tracker.sqlite</code>。这是能被信任地反复运行的前提。</li>
+<li><b>数学交叉验证</b>：<code>shared/indicators.ts</code> 的期望值来自<b>另一份独立的 Python 实现</b>；RSI 用例还对齐了公开的 20-close 演算例（因公开收盘价四舍五入到 2 位而有约 0.07 偏差，测试里写明了原因）。</li>
+<li><b>故障注入</b>：<code>fault.test.ts</code> 模拟整源宕机，验证"每源记录自己的失败、丢弃 0 行数据"。</li>
+<li><b>不变量测试</b>：重复解析同一 feed 插入 0 条（幂等）；裁剪区间不改变指标值；缺口返回 <code>gap</code> + reason 而不是数字。</li>
+</ul>
+
+<h3>11.3 验收矩阵：29 条标准（当前 29/29 PASS）</h3>
+<p class="small">由 <code>scripts/acceptance.ts</code> 自动执行，<b>在数据库副本上</b>跑，所以设置回写不会污染真实数据。报告自己写明："这是构建方自己的测试台，不是独立 QA；通过不等于数据正确，只说明标注与安全规则成立。"</p>
+<details>
+<summary>看 29 条标准的核心主张（节选归纳）</summary>
+<div class="dbody">
+<ol class="small">
+<li>仪表盘能加载真实合约与真实事件（当时 770 条相关事件 / 350 个开盘合约 / 34,099 个历史点）</li>
+<li>每条事件都有源 URL、发布时间、tier 与 affiliation（1000 条检查，0 缺失）</li>
+<li>重跑采集不产生重复；失败按源隔离</li>
+<li>陈旧/失败/屏蔽的源可见标注且保留旧数据</li>
+<li>每个合约都显示 quote basis、双向报价时的买卖价、截止日与规则链接</li>
+<li><b>合约从不取平均、从不合并</b>；场馆分开；价格取平均的代码命中 0 处</li>
+<li>事件→合约链接展示其证据；无匹配的事件不编造链接（754 条链接、759 条无链接）</li>
+<li>价格上下文写明"巧合，非因果"；因果措辞命中 0 处</li>
+<li>国有/官方背景源必须带 affiliation 且<b>永不</b>是 Tier-1（7 个源逐条核对）</li>
+<li>近似（国家级）位置标注为 approximate（539 个定位事件中 329 个是国家级）</li>
+<li>演示种子明确标注为 seed、无法刷新、且不含 Telegram 文本</li>
+<li>每条传感器序列标明提供方、最新观测日期、来源链接与 caveat</li>
+<li>Telegram：每个帖子都有源链接、媒体只存 URL、无任何 ML/LLM 库触碰</li>
+<li><code>/api/health</code> 机器可读并能反映降级</li>
+<li>单元与固件测试全通过（148，当时 15 个文件）</li>
+<li>指标：只接受注册 id；每个 null 都有状态与原因；相同输入→相同输出；裁剪区间不改变值</li>
+<li>叠加线来自服务端结果；tooltip 列出所有启用序列；偏好往返校验；关注列表有上限</li>
+<li>统一流：身份含平台+源+外部 id；跨页无重复；Telegram 不打 tier；补历史条目永不计为新到</li>
+<li>采集设置：边界强制、带版本持久化、租约防重轮询、手动刷新也计入预算</li>
+<li>钱包数据只来自 v2 采集器（无编造行）；显示筛选条件与覆盖度；净额<b>永不</b>标成市场流入</li>
+<li>告警只在 normal→abnormal 打开；去重与重新武装；seed 模式不评估、钱包设置只读</li>
+<li>主张评审：锚定原文；默认 insufficient/unreviewed；非默认评估需要匹配证据 + 评审人 + 理由；陈旧编辑 409</li>
+<li>研究空间：附加幂等、建议带理由且保持待定、provider 到期日保留原义、date-only 保持整天、覆盖率显示 n/d、卡片不编造船只数据</li>
+<li><b>相似度、outlet 数量或匹配本身都不改变任何主张或假设的评估</b>；只有具名评审的决策可以</li>
+<li>海事：目录不发明深链；船只标识符需要来源与合法 IMO；永不合并；无授权 AIS 时位置不可用</li>
+<li>跨视图导航能解析超出当前页的条目与合约，并有明确缺失态</li>
+<li>评审改期是原子的；缓存专用翻译永不要求 provider</li>
+<li>被钉住的已关闭合约仍可解析，同时从开盘列表排除</li>
+<li>变化简报：每行都有引用、窗口与限制声明、缺口带原因、"巧合非因果"、Markdown 导出、hours 有界（hours=0 → 400）</li>
+</ol>
+<p class="small" style="margin-bottom:0">验收报告同时诚实记录了<b>未做</b>的项：暗色模式/平板宽度的浏览器复检、Kalshi 全量历史、Maersk 服务条款未读、故事聚类无标注集、地名志（≈60 处、仅英语）未评测、阿拉伯语/波斯语源未启用等。</p>
+</div>
+</details>
+
+<h3>11.4 构建产物</h3>
+<pre>vite.config.ts
+  plugins: [react()]
+  build.outDir: 'dist'          chunkSizeWarningLimit: 800
+  manualChunks:  node_modules/echarts|zrender → 'echarts'
+                 node_modules/leaflet          → 'leaflet'
+                 node_modules/react|react-dom  → 'vendor-react'
+  # 没有 alias、没有 dev proxy —— 因为 dev 时前端由 Express 的 Vite 中间件
+  # 在同源同端口托管，根本不需要代理
+
+tsconfig.json  单配置覆盖 server/src/shared/scripts；strict: true；noEmit；
+               moduleResolution: Bundler；allowImportingTsExtensions；
+               lib: [ES2023, DOM, DOM.Iterable]；types: ["node"]</pre>
+<p class="small">Server 只监听 <code>127.0.0.1</code>（本地工具，不对外暴露）。</p>
+</section>
+
+<!-- ══════════════════ 12 ══════════════════ -->
+<section id="principles">
+<h2><span class="n">12</span>设计原则与不变量</h2>
+<p class="lead-in">这是整个代码库最有价值的部分。下面每一条都能在代码里指出具体落点。</p>
+
+<div class="tblwrap"><table>
+<thead><tr><th>原则</th><th>代码里的落点</th></tr></thead>
+<tbody>
+<tr><td><b>不能算就不要算</b><br><span class="small muted">绝不把"不知道"写成 0</span></td><td>指标返回 <code>status + reason</code>；provider 未给 PnL 时合计为 <code>null</code> 而非 0；FRED 的 <code>.</code> 与 IODA 的 null 被省略而非填零；Kalshi 蜡烛缺口省略不补；CSV 导出里空值保持空单元格；简报里算不出的合约<b>带理由计数</b></td></tr>
+<tr><td><b>展示证据，而非结论</b></td><td>每条事件↔合约链接存 <code>matched_entities</code> + <code>matched_topics</code>，UI 必须显示"为什么匹配上"；实体/话题全部是词典命中，可追溯；参考资产的每条事实都带来源与日期</td></tr>
+<tr><td><b>来源立场永远可见</b></td><td>每条卡片显示 <code>affiliation</code>；tier 明确是"出版方先验"而非对某条声明的裁定；国有背景源不得为 Tier-1；<code>scope</code> 字段在 UI 里显示"这个源的陈述覆盖什么"（例如 Maersk 的"单承运人，不代表港口关闭"）</td></tr>
+<tr><td><b>时间诚实</b></td><td>发布时刻晚于首次采集 10 分钟以上被判定为"时区标注错误"，条目放到采集时刻，原始值保存在 <code>publisher_time_raw</code> 并在 UI 解释，<b>不猜偏移量</b>；<code>time_precision='date'</code> 表示只有日期；"事情发生的时间"与"发布时间"是两个独立字段</td></tr>
+<tr><td><b>不合并、不平均</b></td><td>两个场馆永不合并（<code>venue</code> + 各自 <code>volume_unit</code>）；跨场馆只给未经验证的对照候选；净额按市场<b>且按结果</b>分列；故事聚类只做分组不做加权</td></tr>
+<tr><td><b>不确定就是不确定</b></td><td><code>claim_status</code> 只有 <code>'reported'</code>，<code>corroborated</code> 被明确不实现（"outlet 相似 ≠ 独立验证"）；Telegram 无匹配"不是虚假的证据"；覆盖率显示 <code>n/d</code>；"采集遥测只从本代码首次运行开始"写进 UI</td></tr>
+<tr><td><b>只有具名的人可以改变信念</b></td><td>主张评估:必须是有 <code>reviewer</code> + <code>rationale</code> + 引用 <code>version_id</code> 的评审；假设评估只能写入 append-only 的 <code>research_decisions</code>；<code>review_needed</code> 提示永不自动改状态；<code>claim_reviews</code>/<code>research_decisions</code> 不可变；每次变更写 <code>research_audit</code></td></tr>
+<tr><td><b>不可变溯源</b></td><td><code>source_item_versions</code> 记录 <code>first_capture | publisher_revision | content_changed | unavailable | restored</code>；主张必须<b>逐字引用</b>已捕获版本中的子串（否则 400）；引用形式 <code>web:&lt;source&gt;:&lt;id&gt;</code> / <code>telegram:&lt;channel&gt;:&lt;post&gt;</code></td></tr>
+<tr><td><b>缺口如实记账</b></td><td><code>tg_gaps</code> / <code>pm_gaps</code> 记录持久化的缺失区间与恢复游标，<code>seen_via</code> 区分"新到/补历史/缺口恢复"；补回来的条目<b>就地展示但永不计为新到</b>；有缺口的钱包被排除在合计之外并说明原因</td></tr>
+<tr><td><b>对上游礼貌，不绕过屏蔽</b></td><td>per-host 限速、UA 表明身份、有界重试、带版本号的请求预算；<code>reliefweb-me</code> 就是 <code>enabled:false</code> 并写明 406 与下一步该做什么；<code>blockedReason</code> 永不尝试抓取</td></tr>
+<tr><td><b>失败必须吵，不能静默</b></td><td>adapter 契约："失败必须 throw，静默 ≠ 失败，绝不用空结果冒充成功"；真实源解析出 0 行视为"结构变了"并抛出；<code>/api/health</code> 用 200/503 区分降级与宕机</td></tr>
+<tr><td><b>版本号即失效协议</b></td><td><code>source_versions</code> + <code>bump()</code> 让每个视图只在自己关心的源变化时刷新；<code>DEFINITION_VERSION</code> 进指标缓存键；<code>BRIEFING_VERSION</code>/<code>ALERT_DEFINITION_VERSION</code>/<code>CLAIM_RULE_VERSION</code> 随结果存储</td></tr>
+<tr><td><b>离线也能演示</b></td><td><code>TRACKER_SEED</code> 用独立库加载真实抓取过的快照，模式标为 <code>seed</code>，禁用刷新与设置写入（409），翻译只读缓存不联网；Telegram 文本默认不进可分享的种子</td></tr>
+</tbody>
+</table></div>
+
+<h3>12.1 反复出现的代码模式</h3>
+<div class="grid2">
+  <div class="card">
+    <h4>结构与依赖</h4>
+    <ul class="small" style="margin-bottom:0">
+      <li><b>按参数注入依赖</b>：<code>db: DatabaseSync</code>、<code>request: typeof fetch</code>、<code>now</code>/<code>asOf</code> 都是参数 → 可测</li>
+      <li><b>纯函数与 I/O 分离</b>：<code>shared/indicators.ts</code>、<code>matchPair</code>、<code>findCounterparts</code>、<code>sniffer</code>、<code>jev</code> 都不碰数据库</li>
+      <li><b>手写校验 + Result 类型</b>：<code>text(v, field, max)</code> + 枚举/范围检查，返回 <code>{ok:true,value} | {ok:false,status,error}</code></li>
+      <li><b>幂等加法迁移</b>：<code>CREATE IF NOT EXISTS</code> + <code>addColumn()</code>；只有空表才 DROP 遗留草稿</li>
+      <li><b>模块头注释声明"拒绝断言什么"</b></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>前端</h4>
+    <ul class="small" style="margin-bottom:0">
+      <li><b>渐进披露作为房屋风格</b>：<code>&lt;details&gt;/&lt;summary&gt;</code> 到处用于 "Details" / "Options" / "About this data" / 规则原文 / caveat</li>
+      <li><b>每个面板一个 ErrorBoundary</b>，带名字便于定位</li>
+      <li><b>乐观锁</b>：研究空间的 PATCH 都带 <code>expected_version</code>，不匹配 409</li>
+      <li><b>单飞写操作</b>：<code>ActionButton</code> 用 ref 锁防止重复提交</li>
+      <li><b>版本号作 props</b>：视图靠 <code>versionKey</code> 变化重取，不做缓存失效逻辑</li>
+    </ul>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════ 13 ══════════════════ -->
+<section id="risks">
+<h2><span class="n">13</span>已知限制与风险</h2>
+
+<h3>13.1 项目自己承认的限制（README / 验收报告）</h3>
+<ul>
+<li><b>地名词典 ≈60 处、仅英语</b>，且未对照标注集评测。539 个已定位事件中 329 个是<b>国家级质心</b>——大多数地图标记是近似的（画成虚线）；还有 62 个事件完全没有地点。</li>
+<li><b>实体/话题抽取是英语词典规则</b>。阿拉伯语/波斯语有手写词典，代码里明确写着<b>未经母语者验证</b>。</li>
+<li><b>事件↔合约链接是词法相关性指针</b>。在从未用于调参的 holdout-2 上：21 个抽样链接中 10 个明显相关、1 个明显错、10 个边界情况。已知残留假阳性："USS Lincoln 从伊朗战争返航" → "美国会入侵伊朗吗"；"油价跳涨" → "伊朗原油产量"。日志里留下了过程教训："第一条规则在开发集上 1.00，换新样本掉到约 0.3"。</li>
+<li><b>故事聚类没有标注集</b>，只是人工目视调参过约 130 条。</li>
+<li><b>没有自动佐证</b>。跨 outlet 分组存在、主张级评审存在，但每个评估都是具名人的判断。</li>
+<li><b>机翻只是阅读辅助</b>：MyMemory、按内容哈希缓存、每日 4500 字符上限、无付费回退；不改变实体匹配或证据评估；种子模式不调用；波斯语当前不翻译。日志里记录了"一个波斯语人名被译成 doctors"。</li>
+<li><b>未做的验证</b>：暗色模式/平板宽度的浏览器复检、Kalshi 全部 148 个合约的历史、Maersk 服务条款未读、冷启动从空库约需 70 秒。</li>
+<li><b>被屏蔽且未绕过的源</b>：UKMTO（403）、ACLED（需凭证）、ReliefWeb（406 机器人拦截）、GDELT（429）、CENTCOM/IMO（本机连不上）、Times of Israel/Arab News（403/Cloudflare）、Reuters/AP（无免费 feed）。</li>
+</ul>
+
+<h3>13.2 通读代码时发现的额外风险</h3>
+<div class="note bad">
+  <span class="t">A. 第二工作区的 <code>adapters.ts</code> 会伪造数据</span>
+  <code>fetchRedditCanaries</code> 与 <code>fetchBestBuyReviews</code> 在失败时<b>静默返回合成的"仿真"评论</b>，Reddit 那批使用真实样貌的 reddit.com URL——形状上与真数据无法区分。<code>canary_summary.lead_time_days</code> 还是硬编码的 <code>52</code>。这跟 War Tracker 主线 adapter 契约那句"静默 ≠ 失败，绝不用空结果冒充成功"是直接冲突的。目前 UI 与测试都还没接上这条链路，所以暂时不会有人看到这些假数据；<b>一旦收尾，这是第一处必须改的。</b>
+</div>
+<div class="note warn">
+  <span class="t">B. 遗留配置可以让"不存在的引擎"显示为就绪</span>
+  第二工作区的 <code>/api/reviews/status</code> 会依据环境变量报告 <code>gemini_ready</code> / <code>claude_ready</code>，而 <code>jev.ts</code> 里只有 TypeSafe Jev + 本地启发式，<b>没有任何 Gemini/Claude 代码路径</b>。这种"能力自述与实现不符"的模式值得在有新引擎时留意。
+</div>
+<div class="note warn">
+  <span class="t">C. 前端有"半实现"的痕迹（仍然存在）</span>
+  <code>App.tsx</code> 里保留着 <code>newsWidth</code>/<code>chartWidth</code> 两个草稿（<code>useDraft</code>），并注入 <code>--news-width</code>/<code>--chart-share</code> CSS 变量，但<b>没有任何拖拽 resize 处理器</b>；<code>--chart-share</code> 只被一条 ≥1000px 的 CSS 规则引用。这是典型的"接了一半"的状态——变量在，交互不在。
+</div>
+<div class="note">
+  <span class="t">D. 两个极容易混淆的目录名</span>
+  <code>server/review/</code>（<b>单数</b>）是跨场馆配对的人工批准闸门（<code>pairs.ts</code>，1814 字节，供 <code>review-kit</code> CLI 使用）；<code>server/reviews/</code>（<b>复数</b>）是上面那个第二工作区。<b>两者毫无关系</b>，名字只差一个 s。做清理时别删错。
+</div>
+<div class="note">
+  <span class="t">E. "死代码仍在磁盘上"本身是个能见度风险</span>
+  第二工作区的文件因为 <code>tsconfig.json</code> 的 <code>include: ["server","src","shared","scripts"]</code> 会<b>被类型检查</b>（<code>tsc --noEmit</code> 通过），但在 UI 与测试接上之前，<b>没有任何测试覆盖它们</b>。同时仓库里没有 dead-code / 未使用导出检查（没有 knip、ts-prune 之类），所以"写了但没接上"的代码不会被自动发现——这次通读里就出现了"文件被删又被加回"而测试数量始终显示正常的情况。
+</div>
+<div class="note">
+  <span class="t">F. 没有编号迁移</span>
+  迁移靠 <code>CREATE IF NOT EXISTS</code> + <code>addColumn()</code> + "表为空才 DROP"的组合，并依赖 <code>db.ts</code> 里一条一次性 UPDATE 修复历史坏行（<code>published_at</code> 晚于 <code>first_seen_at</code> 超过 10 分钟的行）。单人本地项目够用，但<b>不支持回滚</b>，也无法知道某个库跑到了哪个版本（没有 <code>user_version</code>，只有 <code>source_config_version</code> 这类业务版本号）。
+</div>
+<div class="note">
+  <span class="t">G. SSE 不重放</span>
+  无 <code>Last-Event-ID</code>，错过的事件不补发——设计上由轮询兜底，所以只有延迟影响，但客户端必须永远保留轮询路径。
+</div>
+<div class="note">
+  <span class="t">H. 一手数据源的可用性非常依赖本机网络</span>
+  验收报告记录了若干"从这台机器不可达"的源（UKMTO 403、ReliefWeb 406、GDELT 429、CENTCOM/IMO 连接失败）。这些不是代码缺陷，但意味着<b>同一份代码在不同网络上跑出来的覆盖率会不一样</b>，而覆盖率会反过来影响简报与告警的可信度。
+</div>
+</section>
+
+<!-- ══════════════════ 14 ══════════════════ -->
+<section id="start">
+<h2><span class="n">14</span>快速上手</h2>
+
+<div class="grid2">
+  <div class="card">
+    <h4>跑起来</h4>
+    <pre># 需要 Node ≥ 22.13（实测 Node 26），联网才能取实时数据
+npm install
+npm run dev            # → http://localhost:5173
+
+# 首次启动要抓全部数据（约 20–30 秒，冷启动空库约 70 秒）
+# 之后秒开缓存、后台刷新（>5 分钟视为陈旧，服务端每 10 分钟兜底）
+
+npm run demo           # 离线演示（端口 5174，从种子加载，标注 not live）
+PORT=5180 npm run dev  # 换端口
+rm data/tracker.sqlite # 从零开始</pre>
+  </div>
+  <div class="card">
+    <h4>改代码前先看这些</h4>
+    <ol class="small" style="margin-bottom:0">
+      <li><code>README.md</code> — 定位与"诚实边界"（83 行，密度极高）</li>
+      <li><code>docs/AGENT_LOG.md</code> — 8 个会话的逐次记录，含每个决策与<b>被推翻的决策</b>（268 行）</li>
+      <li><code>docs/ACCEPTANCE_REPORT_v2.md</code> — 29 条标准及其证据，以及"未做"的清单</li>
+      <li><code>docs/PLAN_3DAY_SUBAGENTS.md</code> §6 — 11 条原始验收标准的出处</li>
+      <li><code>docs/UNIFIED_MONITOR_PLAN.md</code> — Package A–F / J2 的完整设计（55KB）</li>
+      <li><code>docs/RESEARCH_WORKSPACE_IMPLEMENTATION_PLAN.md</code> + 报告 — 研究空间 H1–W5</li>
+      <li><code>docs/review/README.md</code> — 人工评审套件（明确"没有任何东西被评审过"）</li>
+      <li><code>docs/UI_REDESIGN_SPEC.md</code> — UI 迁移规格与进度表</li>
+    </ol>
+  </div>
+</div>
+
+<h3>按目标找入口</h3>
+<div class="tblwrap"><table>
+<thead><tr><th>我想…</th><th>从这里开始</th></tr></thead>
+<tbody>
+<tr><td>加一个新闻源</td><td><code>server/sources/rss.ts</code>（公共落库路径）→ 写 <code>ingestX</code> → 注册 <code>server/adapters.ts</code> → 加 <code>server/registry.ts</code> 条目 → 加 fixture 测试</td></tr>
+<tr><td>改事件↔合约的匹配规则</td><td><code>server/link.ts</code>（规则 v2 全在一个文件里），改完跑 <code>npm run reanalyze</code></td></tr>
+<tr><td>改实体/话题/地理规则</td><td><code>server/geo.ts</code>，改完 <code>npm run reanalyze</code>（不联网）</td></tr>
+<tr><td>换/加图表或指标</td><td>数学 → <code>shared/indicators.ts</code>；注册 → <code>server/indicators/service.ts</code> 的 <code>DEFS</code>；UI → <code>src/components/ProbChart.tsx</code> / <code>IndicatorControl.tsx</code></td></tr>
+<tr><td>改简报内容</td><td><code>server/briefing.ts</code>（<code>Cites</code> 类负责编号）+ <code>shared/briefing.ts</code> + <code>src/components/research/Briefing.tsx</code></td></tr>
+<tr><td>改数据库结构</td><td><code>server/db.ts</code>（主库）或对应子域的 <code>schema.ts</code>；<b>只能加，不能改已有列的类型</b>，且必须幂等</td></tr>
+<tr><td>理解"为什么这么设计"</td><td><code>docs/AGENT_LOG.md</code> 的"Decisions I made that you may want to reverse"章节</td></tr>
+<tr><td>加一个全新子域</td><td>照 <code>server/maritime/</code> 或 <code>server/wallets/</code> 的样子：<code>schema.ts</code> + <code>routes.ts</code> + <code>service.ts</code> + <code>types.ts</code>，在 <code>db.ts</code> 调用 <code>migrateX()</code>，在 <code>index.ts</code> 注册路由，在 <code>registry.ts</code> 或作业注册表里挂钩子</td></tr>
+</tbody>
+</table></div>
+</section>
+
+<div class="footer">
+  <p><b>关于这份文档。</b>内容来自对仓库的静态通读（<code>server/</code>、<code>src/</code>、<code>shared/</code>、<code>scripts/</code>、构建配置与 <code>docs/</code>），加上真实验证的命令：<code>npx tsc --noEmit</code> → 通过；<code>npm test</code> → <b>151 passed / 0 failed</b>（1.9s，15 个文件）；表/索引数由只读连接 <code>data/tracker.sqlite</code> 查 <code>sqlite_master</code> 得到。</p>
+  <p><b>重要：这是一份针对"提交快照"的地图，而不是对工作树的快照。</b>通读开始时是 <code>e1577da</code> 加上一个未提交的 Customer Review 工作区；期间出现了提交 <code>3c8fdcc</code>「Remove unused customer-review schema」，那个工作区的文件（前端、路由、服务、测试、<code>data/reviews.sqlite</code>）一度从磁盘消失，之后又被逐个加回——所以我最后核对时看到的是一个<b>半接上的状态</b>：<code>server/reviews/</code> 与 <code>src/api-reviews.ts</code>、<code>src/components/reviews/</code> 已回到磁盘、<code>server/index.ts</code> 已重新调用 <code>registerReviewRoutes</code>，但 <code>VIEWS</code> 里还没有 <code>'reviews'</code>、也没有 <code>ReviewTrackerView.tsx</code> 与 <code>reviews.test.ts</code>。</p>
+  <p>因此本文档的结构性数字统一取自 <code>3c8fdcc</code>（用 <code>git ls-tree</code> / <code>git show</code> 统计，可复现）：server 81 文件 / 9,793 行，src 51 文件 / 4,643 行，shared 6 文件 / 952 行，scripts 13 文件 / 732 行，合计 <b>16,120 行</b>；95 处路由注册 / 77 个唯一路径；7 个视图；15 个测试文件。运行时数字来自本机实测：<b>61 张表 / 16 个显式索引</b>（只读查询 <code>data/tracker.sqlite</code> 的 <code>sqlite_master</code>）、<b>151 个测试全通过</b>（<code>npm test</code>，1.9s）、42 个受监控数据源。第二工作区的细节单独标注为"不在 HEAD"。</p>
+  <p>测试运行方式：<code>npm test</code> 在临时库上执行——15 个测试文件里有 11 个在 import 之前就设好 <code>TRACKER_DB=mkdtempSync(...)</code>——因此<b>没有触碰 <code>data/</code> 中的任何真实数据</b>。功能被移除前我也跑过一次 <code>REVIEWS_DB=:memory: npm test</code>（166 / 16），同样没有改动真实数据。</p>
+  <p>另一处值得记下的观察：因为仓库没有 dead-code / 未使用导出检查，一个模块可以"文件在、类型检查通过、却没有 UI 入口也没有测试"——<code>tsc --noEmit</code> 与 <code>npm test</code> 全绿并不代表它接上了。核对时请用 §01 提示里那几条命令看 <code>git status</code> 与 <code>VIEWS</code>。</p>
+</div>
+
+</div><!-- /content -->
+</main>
+</div>
+
+<button class="toc-top" id="toTop" type="button" title="回到顶部" aria-label="回到顶部">↑</button>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ── 主题切换 ── */
+  var root = document.documentElement;
+  var KEY = 'tt-codemap-theme';
+  try { var saved = localStorage.getItem(KEY); if (saved) root.dataset.theme = saved; } catch(e){}
+  document.getElementById('themeBtn').addEventListener('click', function(){
+    var cur = root.dataset.theme;
+    if (!cur) cur = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    var next = cur === 'dark' ? 'light' : 'dark';
+    root.dataset.theme = next;
+    try { localStorage.setItem(KEY, next); } catch(e){}
+  });
+
+  /* ── TOC 高亮 ── */
+  var links = [].slice.call(document.querySelectorAll('nav.side a[href^="#"]'));
+  var sections = links.map(function(a){ return document.querySelector(a.getAttribute('href')); });
+  function spy(){
+    var y = window.scrollY + 120, best = 0;
+    for (var i = 0; i < sections.length; i++){
+      if (sections[i] && sections[i].offsetTop <= y) best = i;
+    }
+    links.forEach(function(a, i){ a.classList.toggle('active', i === best); });
+  }
+  var ticking = false;
+  window.addEventListener('scroll', function(){
+    if (ticking) return; ticking = true;
+    requestAnimationFrame(function(){ spy(); ticking = false; });
+  }, { passive: true });
+  spy();
+
+  document.getElementById('toTop').addEventListener('click', function(){
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  /* ── 通用过滤器 ── */
+  function wire(opts){
+    var input = document.getElementById(opts.input);
+    var table = document.getElementById(opts.table);
+    var countEl = document.getElementById(opts.count);
+    var bar = document.getElementById(opts.bar);
+    if (!input || !table) return;
+    var rows = [].slice.call(table.querySelectorAll('tbody tr'));
+    var group = 'all';
+
+    function apply(){
+      var q = input.value.trim().toLowerCase();
+      var shown = 0;
+      rows.forEach(function(r){
+        var text = r.textContent.toLowerCase();
+        var okQ = !q || text.indexOf(q) !== -1;
+        var okG = group === 'all' || r.getAttribute(opts.attr) === group;
+        var ok = okQ && okG;
+        r.classList.toggle('hidden', !ok);
+        if (ok) shown++;
+      });
+      if (countEl) countEl.textContent = shown + ' / ' + rows.length;
+    }
+
+    input.addEventListener('input', apply);
+    if (bar){
+      [].slice.call(bar.querySelectorAll('[data-' + opts.btnAttr + ']')).forEach(function(b){
+        b.addEventListener('click', function(){
+          [].slice.call(bar.querySelectorAll('.fbtn')).forEach(function(x){ x.classList.remove('on'); });
+          b.classList.add('on');
+          group = b.getAttribute('data-' + opts.btnAttr);
+          apply();
+        });
+      });
+    }
+    apply();
+  }
+
+  wire({ input:'fileFilter',  table:'fileTable',   count:'fileCount',   bar:'fileFilterBar', attr:'data-g', btnAttr:'fg' });
+  wire({ input:'tblFilter',   table:'tblTable',    count:'tblCount',    bar:'tblFilterBar',  attr:'data-g', btnAttr:'tbl' });
+
+  /* ── API 过滤（按每组卡片 + 行） ── */
+  var apiInput = document.getElementById('apiFilter');
+  var apiCount = document.getElementById('apiCount');
+  var apiRows = [].slice.call(document.querySelectorAll('#apiGroups tr[data-p]'));
+  var apiCards = [].slice.call(document.querySelectorAll('#apiGroups [data-api-group]'));
+  function applyApi(){
+    var q = (apiInput.value || '').trim().toLowerCase();
+    var shown = 0;
+    apiRows.forEach(function(r){
+      var ok = !q || r.textContent.toLowerCase().indexOf(q) !== -1;
+      r.classList.toggle('hidden', !ok);
+      if (ok) shown++;
+    });
+    apiCards.forEach(function(c){
+      var any = c.querySelector('tr[data-p]:not(.hidden)');
+      c.classList.toggle('hidden', !any);
+    });
+    apiCount.textContent = shown + ' / ' + apiRows.length + ' 行（共 77 个唯一路径）';
+  }
+  if (apiInput){ apiInput.addEventListener('input', applyApi); applyApi(); }
+
+  /* ── 打印时展开所有 details ── */
+  window.addEventListener('beforeprint', function(){
+    [].slice.call(document.querySelectorAll('details')).forEach(function(d){ d.open = true; });
+  });
+})();
+</script>
+</body>
+</html>
