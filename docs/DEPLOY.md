@@ -1,45 +1,64 @@
-# 部署到 Google Cloud Run
+# 部署到 Google Cloud Run（实时采集 + Litestream 持久化）
 
 一个容器同时提供 API 和前端（`Dockerfile`）。不需要本地 Docker：`gcloud run deploy --source .`
 会把代码上传到 Cloud Build，在云端构建镜像。
 
+数据是 SQLite（`data/tracker.sqlite` 和 `data/reviews.sqlite`）。设置了 `LITESTREAM_BUCKET` 后，
+容器启动时会先从 Cloud Storage 恢复这两个库，运行期间持续复制回去（`scripts/start.sh`、
+`litestream.yml`），所以重启、缩容、重新部署都不会丢数据，并保留 7 天的时间点历史。
+
 ## 一次性准备
 
 ```bash
-gcloud auth login
-gcloud config set project <你的项目 ID>
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com
+PROJECT=<项目 ID>
+REGION=asia-east1
+BUCKET=$PROJECT-traders-tracker-db
+
+gcloud config set project $PROJECT
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com storage.googleapis.com
+
+# 存数据库副本的 bucket（只给 Cloud Run 的服务账号写权限）
+gcloud storage buckets create gs://$BUCKET --location=$REGION --uniform-bucket-level-access
+NUMBER=$(gcloud projects describe $PROJECT --format='value(projectNumber)')
+gcloud storage buckets add-iam-policy-binding gs://$BUCKET \
+  --member="serviceAccount:$NUMBER-compute@developer.gserviceaccount.com" --role=roles/storage.objectAdmin
+
+# 团队口令：随机生成，只存在本机 .env.deploy（已被 git 忽略）
+echo "TEAM_WRITE_TOKEN=$(openssl rand -base64 18 | tr -d '/+=')" > .env.deploy
 ```
 
-项目需要已经开通 billing。
-
-## 部署 demo
+## 部署
 
 ```bash
+source .env.deploy
 gcloud run deploy traders-tracker \
-  --source . \
-  --region asia-east1 \
-  --allow-unauthenticated \
-  --max-instances 1 \
-  --memory 1Gi \
-  --set-env-vars "TEAM_WRITE_TOKEN=<团队口令>,TRACKER_NO_AUTO_REFRESH=1,SEC_USER_AGENT=TradersTracker <联系邮箱>"
+  --source . --region $REGION --allow-unauthenticated \
+  --min-instances 1 --max-instances 1 --no-cpu-throttling \
+  --cpu 1 --memory 1Gi \
+  --set-env-vars "LITESTREAM_BUCKET=$BUCKET,TEAM_WRITE_TOKEN=$TEAM_WRITE_TOKEN,SEC_USER_AGENT=TradersTracker <联系邮箱>"
 ```
 
-- `--max-instances 1`：SQLite 是单文件数据库，必须只有一个实例在写。
-- `TEAM_WRITE_TOKEN`：公开只读，团队口令写入。口令不要写进代码或 git。
-- `TRACKER_NO_AUTO_REFRESH=1`：War Tracker 那一侧不自动抓新闻和市场数据。去掉这个变量就会开始实时采集。
-- 打分、Amazon 采集用到的 key（`TYPESAFE_API_KEY`、`RAINFOREST_API_KEY` 等）建议放进 Secret Manager，再用 `--set-secrets` 挂载，不要用明文环境变量。
+为什么是这些参数：
 
-## 必须知道的限制
+- `--min-instances 1 --no-cpu-throttling`：War Tracker 的实时采集和 Reviews 的定时采集都是后台任务，需要实例一直在、CPU 一直可用；Litestream 也需要持续复制。
+- `--max-instances 1`：SQLite 只能有一个写入者。
+- 没有设置 `TRACKER_NO_AUTO_REFRESH`，所以 War Tracker 会实时采集新闻、预测市场和传感器数据。
+- 打分和 Amazon 采集的 key（`TYPESAFE_API_KEY`、`RAINFOREST_API_KEY` 等）建议放进 Secret Manager，再用 `--set-secrets` 挂载。
 
-Cloud Run 的磁盘是**临时**的，实例重启或缩容到 0 之后：
+费用（参考价，以账单为准）：1 vCPU + 1 GiB、常驻、CPU 一直分配，大约每月 50 美元；GCS 存储和请求费用通常不到 1 美元。
 
-- Reviews 的内置 demo 数据会自动重新加载；
-- 团队添加的公司、采集到的评论、读取的财报都会**丢失**；
-- 后台调度器只有在实例运行时才会跑（默认空闲时会缩容到 0）。
+## 已知限制
 
-所以这个部署适合展示。要长期追踪，可以选下面任意一种：
+- 部署新版本时，新旧两个实例会短暂同时运行几秒。Litestream 会为新实例开一个新的 generation，恢复时取最新的那个，所以旧实例在这几秒里的写入可能丢失。对这个 tracker 影响很小。
+- 某些新闻或数据源可能会拒绝来自云服务器 IP 的请求，在 Sources 页面会显示为失败，不会被绕过。
 
-1. **Cloud Run + Litestream → GCS**：SQLite 持续复制到 Cloud Storage，启动时自动恢复。改动小，推荐作为下一步。
-2. **一台小 VM**（Compute Engine e2-small / Fly.io 加持久卷）：直接 `npm start`，数据就在磁盘上。
-3. 加 `--min-instances 1 --no-cpu-throttling`，让调度器一直运行（每月会多出几十美元），仍然需要配合 1 或 2 才能保住数据。
+## 常用操作
+
+```bash
+# 查看日志
+gcloud run services logs read traders-tracker --region $REGION --limit 100
+# 确认副本在写
+gcloud storage ls -r gs://$BUCKET | head
+# 更新 key 或口令（会触发新 revision）
+gcloud run services update traders-tracker --region $REGION --update-env-vars "TYPESAFE_API_KEY=..."
+```

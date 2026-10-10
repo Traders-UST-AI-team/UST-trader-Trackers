@@ -1,0 +1,17 @@
+# Continuous replication of both SQLite databases to Google Cloud Storage.
+# Used by scripts/start.sh when LITESTREAM_BUCKET is set; credentials come from the runtime's
+# service account (Application Default Credentials), never from this file.
+dbs:
+  - path: /app/data/tracker.sqlite
+    replicas:
+      - type: gcs
+        bucket: ${LITESTREAM_BUCKET}
+        path: tracker
+        # Keep a week of history, so a bad write can be rolled back to a point in time.
+        retention: 168h
+  - path: /app/data/reviews.sqlite
+    replicas:
+      - type: gcs
+        bucket: ${LITESTREAM_BUCKET}
+        path: reviews
+        retention: 168h
