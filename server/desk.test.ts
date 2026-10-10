@@ -18,7 +18,7 @@ function ev(id: string, title: string, o: Partial<TrackerEvent> & { hoursAgo?: n
     ...rest,
   };
 }
-const link = (condition_id: string) => ({ condition_id, venue: 'polymarket' as const, question: `Q ${condition_id}`, price: 0.4, score: 5, matched_entities: ['Iran'], matched_topics: ['shipping'] });
+const link = (condition_id: string, score = 5) => ({ condition_id, venue: 'polymarket' as const, question: `Q ${condition_id}`, price: 0.4, score, matched_entities: ['Iran'], matched_topics: ['shipping'] });
 const market = (condition_id: string, one_day_change: number) => ({ condition_id, price: 0.4, one_day_change } as Market);
 
 test('desk: a confirmed, market-linked development ranks first with its reasons; features and untopical items are left out', () => {
@@ -65,4 +65,27 @@ test('desk: items outside the window and filtered-out items are not considered',
   assert.equal(r.considered, 0);
   assert.equal(r.stories.length, 0);
   assert.equal(rankDesk(events, new Map(), NOW, 48).considered, 1);
+});
+
+test('desk: one moving contract linked to several stories gives its full move to the best-linked story only', () => {
+  const markets = new Map([['perim', market('perim', 0.365)]]);
+  const base = { topics: ['security', 'shipping'], focus_energy_shipping: true };
+  const events = [
+    ev('y1', 'Houthis withdraw from Perim Island in Bab el-Mandeb', { ...base, storyId: 'perim', groups: 3, entities: ['Houthis', 'Perim'], linked_contracts: [link('perim', 9)] }),
+    ev('y2', 'Saudi coalition jets strike targets near Hodeidah port', { ...base, storyId: 'hod', groups: 3, entities: ['Hodeidah'], linked_contracts: [link('perim', 5)] }),
+    ev('y3', 'Tanker diverted after drone sighting off Mocha', { ...base, storyId: 'mocha', groups: 3, entities: ['Mocha'], linked_contracts: [link('perim', 4)] }),
+    ev('y4', 'Aden government announces fuel export halt', { ...base, storyId: 'aden', groups: 3, entities: ['Aden'], linked_contracts: [link('perim', 6)] }),
+  ];
+  const r = rankDesk(events, markets, NOW);
+  assert.equal(r.stories.length, 4, 'all four stories still rank on their own merits');
+  const withMove = r.stories.filter((s) => s.reasons.some((x) => x.label.includes('36.5 pp')));
+  assert.deepEqual(withMove.map((s) => s.lead.id), ['y1'], 'only the best-linked story carries the move');
+  assert.equal(withMove[0].reasons.find((x) => x.key === 'market')?.points, 4);
+  assert.equal(r.stories[0].lead.id, 'y1', 'and it ranks first');
+  for (const s of r.stories.filter((s) => s.lead.id !== 'y1')) {
+    const shared = s.reasons.find((x) => x.key === 'market-shared');
+    assert.ok(shared && shared.points === 1, `${s.lead.id} only touches a moving market`);
+    assert.ok(!s.reasons.some((x) => x.key === 'market'), `${s.lead.id} has no full market reason`);
+    assert.ok(s.contracts.some((c) => c.change_24h === 0.365), 'the contract and its move stay visible in the detail');
+  }
 });

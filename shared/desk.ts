@@ -96,14 +96,31 @@ function pickLead(items: TrackerEvent[]): TrackerEvent {
     || Date.parse(b.timestamp) - Date.parse(a.timestamp))[0];
 }
 
+/** Smallest 24h move (probability units) that earns market points. */
+const MOVING = 0.02;
+
 const ppLabel = (x: number) => `${x >= 0 ? '▲' : '▼'} ${Math.abs(x * 100).toFixed(1)} pp`;
 
-function scoreStory(items: TrackerEvent[], markets: ReadonlyMap<string, Market>, now: number): Omit<DeskStory, 'band' | 'related'> {
+/** Strongest event-to-contract link score among a story's items, per contract. */
+function linkStrength(items: TrackerEvent[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const e of items) for (const c of e.linked_contracts) out.set(c.condition_id, Math.max(out.get(c.condition_id) ?? 0, c.score));
+  return out;
+}
+
+const independenceOf = (items: TrackerEvent[]) => Math.max(1, ...items.map((e) => e.story?.independence_groups ?? 1));
+
+/**
+ * Score one story. `carries` says which linked contracts' moves this story may count in full; a move
+ * on any other linked contract is credited to a better-linked story, so here it only counts as touching
+ * a moving market. Omitted, every linked move counts (the first pass, before moves are assigned).
+ */
+function scoreStory(items: TrackerEvent[], markets: ReadonlyMap<string, Market>, now: number, carries?: ReadonlySet<string>): Omit<DeskStory, 'band' | 'related'> {
   const lead = pickLead(items);
   const byTime = [...items].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
   // Outlets and independence both describe the whole story group (which can reach back before the window), so they share a basis.
   const outlets = [...new Set([...items.map(outletOf), ...items.flatMap((e) => e.story?.publishers.map((p) => p.name) ?? [])])];
-  const independent = Math.max(1, lead.story?.independence_groups ?? 0, ...items.map((e) => e.story?.independence_groups ?? 1));
+  const independent = Math.max(lead.story?.independence_groups ?? 0, independenceOf(items));
   const contracts = new Map<string, DeskContract>();
   for (const e of items) for (const c of e.linked_contracts) {
     if (contracts.has(c.condition_id)) continue;
@@ -115,11 +132,12 @@ function scoreStory(items: TrackerEvent[], markets: ReadonlyMap<string, Market>,
   const pos: DeskReason[] = [], neg: DeskReason[] = [];
   const add = (key: string, label: string, points: number) => (points >= 0 ? pos : neg).push({ key, label, points });
 
-  const big = cs.find((c) => c.change_24h != null);
+  const big = cs.find((c) => c.change_24h != null && (!carries || carries.has(c.condition_id)));
   const move = Math.abs(big?.change_24h ?? 0);
   if (move >= 0.10) add('market', `Linked market ${ppLabel(big!.change_24h!)} 24h`, 4);
   else if (move >= 0.05) add('market', `Linked market ${ppLabel(big!.change_24h!)} 24h`, 3);
   else if (move >= 0.02) add('market', `Linked market ${ppLabel(big!.change_24h!)} 24h`, 1.5);
+  else if (cs.some((c) => Math.abs(c.change_24h ?? 0) >= MOVING)) add('market-shared', 'Touches a moving market (a better-linked story carries the move)', 1);
   else if (cs.length) add('market', `Touches ${cs.length} contract${cs.length === 1 ? '' : 's'}`, 1);
 
   if (independent >= 5) add('confirm', `${independent} independent outlets`, 3.5);
@@ -178,8 +196,26 @@ export function rankDesk(events: TrackerEvent[], markets: ReadonlyMap<string, Ma
   const pool = events.filter((e) => e.relevant && Date.parse(e.timestamp) >= since && Date.parse(e.timestamp) <= now + 600_000);
   const groups = new Map<string, TrackerEvent[]>();
   for (const e of pool) { const k = e.story?.story_id ?? e.id; (groups.get(k) ?? groups.set(k, []).get(k)!).push(e); }
-  const scored = [...groups.values()].map((g) => ({ ...scoreStory(g, markets, now), band: 'watch' as DeskBand, related: [] as DeskStory[] }))
-    .sort((a, b) => b.score - a.score || Date.parse(b.last_at) - Date.parse(a.last_at));
+  // One contract's move can be linked to many stories; only one should rank on it. The full move goes to
+  // the ranked story that links the contract most strongly (event_market_links score, then more independent
+  // outlets, then the most recent); the others only "touch a moving market". Carriers are picked among stories
+  // already above the bar, and no story gains points in the second pass, so nothing new crosses it.
+  const stories0 = [...groups.values()].map((g) => ({ items: g, first: scoreStory(g, markets, now), links: linkStrength(g), independent: independenceOf(g) }));
+  const carrier = new Map<string, (typeof stories0)[number]>();
+  for (const s of stories0) {
+    if (s.first.score < DESK_RULES.watchMin) continue;
+    for (const [cid, strength] of s.links) {
+      if (Math.abs(markets.get(cid)?.one_day_change ?? 0) < MOVING) continue;
+      const cur = carrier.get(cid);
+      const curStrength = cur?.links.get(cid) ?? -1;
+      if (!cur || strength > curStrength || (strength === curStrength && (s.independent > cur.independent
+        || (s.independent === cur.independent && Date.parse(s.first.last_at) > Date.parse(cur.first.last_at))))) carrier.set(cid, s);
+    }
+  }
+  const scored = stories0.map((s) => {
+    const carries = new Set([...s.links.keys()].filter((cid) => carrier.get(cid) === s));
+    return { ...scoreStory(s.items, markets, now, carries), band: 'watch' as DeskBand, related: [] as DeskStory[] };
+  }).sort((a, b) => b.score - a.score || Date.parse(b.last_at) - Date.parse(a.last_at));
 
   const kept: DeskStory[] = [];
   for (const s of scored) {
