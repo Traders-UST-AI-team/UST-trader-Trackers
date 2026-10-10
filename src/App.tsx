@@ -17,6 +17,7 @@ import { WatchlistBar } from './components/WatchlistBar';
 import { ToastContainer } from './components/Toast';
 import { ShortcutsModal } from './components/ShortcutsModal';
 import { SubNav } from './components/SubNav';
+import { SimpleDetail } from './components/SimpleDetail';
 import { useGlobalShortcuts } from './shortcuts';
 import { MARKET_SOURCES, SENSOR_SOURCES_IDS, WALLET_SOURCE_IDS, versionKey } from './store';
 
@@ -28,6 +29,7 @@ export function App() {
   const [lastContact, setLastContact] = useState<number | null>(null);
   const [storageError, setStorageError] = useState(false);
   const [followMarket, setFollowMarket] = useDraft('follow-market', true);
+  const [simple, setSimple] = useDraft('monitor-simple', true);
   const [newsWidth, setNewsWidth] = useDraft('news-width', 25);
   const [chartWidth, setChartWidth] = useDraft('chart-width', 55);
   const [status, setStatus] = useState<Status | null>(null);
@@ -226,7 +228,7 @@ export function App() {
       {connectionError && <div className="banner" role="alert"><b>Tracker disconnected — showing cached data.</b> Last contact {lastContact ? new Date(lastContact).toLocaleString() : 'not established'}. {connectionError}</div>}
       {storageError && <div className="banner" role="alert">Browser storage is unavailable. Keep this page open to preserve unsaved drafts.</div>}
       {error && <div className="banner" role="alert">{error} <button onClick={() => { setRestoreRetry((n) => n + 1); loadData(); }}>Retry workspace</button></div>}
-      {view === 'dashboard' && <ErrorBoundary name="Watchlist"><WatchlistBar versionKey={`${marketVer}|${sensorVer}`} now={now} onOpenMarket={openMarket} onOpenSensor={(id) => { setSensorSelection((s) => ({ id, request: (s?.request ?? 0) + 1 })); }} /></ErrorBoundary>}
+      {view === 'wallets' && <ErrorBoundary name="Watchlist"><WatchlistBar versionKey={`${marketVer}|${sensorVer}`} now={now} onOpenMarket={openMarket} onOpenSensor={(id) => { setSensorSelection((s) => ({ id, request: (s?.request ?? 0) + 1 })); setView('dashboard'); }} /></ErrorBoundary>}
       {visited.current.has('feed') && <div className="viewpage col" hidden={view !== 'feed'}><SubNav items={[{ id: 'feed', label: 'All items' }, { id: 'telegram', label: 'Telegram analysis' }]} view={view} setView={setView} /><ErrorBoundary name="Feed"><FeedView now={now} versionKey={allVer} seedMode={status?.mode === 'seed'} onOpenEvent={openEvent} /></ErrorBoundary></div>}
       {visited.current.has('wallets') && <div className="viewpage" hidden={view !== 'wallets'}><ErrorBoundary name="Wallets"><WalletsView now={now} versionKey={walletVer} onOpenMarket={openMarket} /></ErrorBoundary></div>}
       {visited.current.has('alerts') && <div className="viewpage col" hidden={view !== 'alerts'}><SubNav items={[{ id: 'sources', label: 'Sources' }, { id: 'alerts', label: 'Alerts', badge: alertCount }]} view={view} setView={setView} /><ErrorBoundary name="Alerts"><AlertsView now={now} versionKey={alertVer} onOpenMarket={openMarket} /></ErrorBoundary></div>}
@@ -236,8 +238,10 @@ export function App() {
       <main className="split" hidden={view !== 'dashboard'}>
         <ErrorBoundary name="Event feed"><EventList events={shown} total={events.length} selectedId={eventId} onSelect={onSelect} now={now}
           query={query} setQuery={setQuery} topic={topic} setTopic={setTopic} tier={tier} setTier={setTier} scope={scope} setScope={setScope}
-          showFiltered={showFiltered} setShowFiltered={setShowFiltered} /></ErrorBoundary>
-        <ErrorBoundary name="Chart & detail panel"><RightPanel followMarket={followMarket} setFollowMarket={setFollowMarket} sensorSelection={sensorSelection} active={view === 'dashboard'} eventSelection={eventSelection} marketVer={marketVer} sensorVer={sensorVer} walletVer={walletVer} onOpenDossier={openDossierView} onSelectEvent={onSelect} mapEvents={shown} markets={workspaceMarkets} events={events} event={selected} contractId={contractId} setContractId={selectContract} now={now} /></ErrorBoundary>
+          showFiltered={showFiltered} setShowFiltered={setShowFiltered} simple={simple} setSimple={setSimple} markets={workspaceMarkets} /></ErrorBoundary>
+        {simple
+          ? <ErrorBoundary name="Item detail"><SimpleDetail event={selected} markets={workspaceMarkets} contractId={contractId} setContractId={selectContract} onOpenDossier={openDossierView} now={now} /></ErrorBoundary>
+          :         <ErrorBoundary name="Chart & detail panel"><RightPanel followMarket={followMarket} setFollowMarket={setFollowMarket} sensorSelection={sensorSelection} active={view === 'dashboard'} eventSelection={eventSelection} marketVer={marketVer} sensorVer={sensorVer} walletVer={walletVer} onOpenDossier={openDossierView} onSelectEvent={onSelect} mapEvents={shown} markets={workspaceMarkets} events={events} event={selected} contractId={contractId} setContractId={selectContract} now={now} /></ErrorBoundary>}
       </main>
       <ToastContainer />
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />

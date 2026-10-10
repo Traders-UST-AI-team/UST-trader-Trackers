@@ -222,10 +222,8 @@ export function RightPanel({ followMarket, setFollowMarket, sensorSelection, act
     toast('Exported contract history as CSV', 'success');
   };
 
-  return (
-    <section className={`right ${focusChart ? 'chart-focused' : ''}`}>
-      <div className="panel chartpanel" ref={chartPanel}>
-        <details className="changecontract" open={!market}><summary>Change contract</summary>
+  const picker = (
+        <details className="changecontract pop" open={!market}><summary>Contract</summary><div className="popbody">
         <div className="marketpicker"><label htmlFor="active-market">Market workspace</label>
           <div className="search-wrap">
             <input type="search" aria-label="Find a contract" placeholder="Find a contract…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -237,24 +235,29 @@ export function RightPanel({ followMarket, setFollowMarket, sensorSelection, act
         {!followMarket && <p className="small muted">Current contract locked; select another contract to change it.</p>}
         {event && !event.linked_contracts.some((c) => c.condition_id === contractId) && <p className="context-notice small" role="status">Context only — this news item has no relevance link to the selected contract.</p>}
         {market?.is_open === false && <p className="context-notice small">Provider marks this stored contract as not open. Rules and available history remain accessible.</p>}
-        </details>
+        </div></details>
+  );
+
+  return (
+    <section className={`right ${focusChart ? 'chart-focused' : ''}`}>
+      <div className="panel chartpanel" ref={chartPanel}>
+        {!market && picker}
         {market ? (
           <>
             {event && event.linked_contracts.length > 0 && (
               <div className="touches" role="group" aria-label="Contracts this item touches">
                 <span className="small muted" title="Matched on shared entities and topics. A link is not evidence that the item affected the price.">Touches</span>
-                {event.linked_contracts.slice(0, 5).map((c) => (
+                {event.linked_contracts.slice(0, 3).map((c) => (
                   <button key={c.condition_id} className={c.condition_id === contractId ? 'on' : ''} onClick={() => setContractId(c.condition_id)} title={c.question}>
-                    <span className="tq">{c.question.length > 54 ? `${c.question.slice(0, 53)}…` : c.question}</span> <b>{pct(c.price)}</b>
+                    <span className="tq">{c.question.length > 40 ? `${c.question.slice(0, 39)}…` : c.question}</span> <b>{pct(c.price)}</b>
                   </button>
                 ))}
-                {event.linked_contracts.length > 5 && <span className="small muted">+{event.linked_contracts.length - 5} more in “All contracts”</span>}
+                {event.linked_contracts.length > 3 && <span className="small muted">+{event.linked_contracts.length - 3} more in “All contracts”</span>}
               </div>
             )}
             <div className="mhead">
               <div>
-                <div className="muted small"><span className={`venue ${market.venue}`}>{VENUE_NAME[market.venue]}</span> {market.event_title}</div>
-                <h2>{market.question}</h2>
+                <h2 title={market.event_title}><span className={`venue ${market.venue}`}>{VENUE_NAME[market.venue]}</span> {market.question}</h2>
               </div>
               <div className="mhead-actions">
                 <button className={`pinbtn ${wl.isPinned('market', market.condition_id) ? 'on' : ''}`} onClick={togglePin} title={wl.isPinned('market', market.condition_id) ? 'Remove from the watchlist' : `Pin to the watchlist (max 8; ${wl.items.length} pinned)`} disabled={!wl.isPinned('market', market.condition_id) && wl.items.length >= 8}>{wl.isPinned('market', market.condition_id) ? '★ Pinned' : '☆ Pin'}</button>
@@ -265,21 +268,6 @@ export function RightPanel({ followMarket, setFollowMarket, sensorSelection, act
                 <span className="muted small">{market.outcome_label} · {market.quote_basis ? market.quote_basis.replace('_', ' ') : 'no quote'}</span>
               </div>
             </div>
-            <details className="marketstats"><summary>Quote details, changes &amp; rules</summary><dl className="stats">
-              <ChangeStat r={byInd.get('change_1h')} title="1h change" />
-              <ChangeStat r={byInd.get('change_24h')} title="24h change" />
-              <div title={mv ? (mv.status === 'ok' ? `Latest adjacent-hour move vs ${mvx.baseline?.n} prior adjacent-hour pairs (type-7 quantiles). ${mvx.caution ?? ''}` : `${mv.status.replace('_', ' ')}: ${mv.reason ?? ''}`) : ''}>
-                <dt>Hourly move vs its history</dt>
-                <dd>{mv?.status === 'ok' && mvx.current && mvx.baseline ? <>{mvx.current.abs_pp.toFixed(1)} pp <span className="muted small">median {mvx.baseline.median_pp.toFixed(1)} · P95 {mvx.baseline.p95_pp.toFixed(1)}</span>{mvx.label?.startsWith('above_p95') && <span className="chip warn">above P95{mvx.caution ? ' · wide spread' : ''}</span>}</> : <span className="muted small">{mv ? mv.status.replace('_', ' ') : '…'}</span>}</dd>
-              </div>
-              <div title="Reported by the venue's own API; its window and reference point are not documented, so it is not comparable to the history-based changes."><dt>Provider-reported 24h / 7d</dt><dd>{market.one_day_change == null && market.one_week_change == null ? <span className="muted small">not provided</span> : <>{pp(market.one_day_change ?? null)} / {pp(market.one_week_change ?? null)}</>}</dd></div>
-              <div><dt>Bid / Ask</dt><dd>{market.best_bid != null && market.best_ask != null ? `${pct(market.best_bid, 1)} / ${pct(market.best_ask, 1)}` : '—'}{market.wide_spread && <span className="chip warn" title="Spread above 10 points: the midpoint is a weak estimate">wide</span>}</dd></div>
-              <div><dt>Volume 24h / total</dt><dd title={market.volume_unit === 'USD' ? 'US dollars' : 'Contracts traded (each pays $1 max); not comparable to USD volume'}>{vol(market.volume_24h, market.volume_unit)} / {vol(market.volume_total, market.volume_unit)}</dd></div>
-              <div><dt>{market.venue === 'kalshi' ? 'Open interest' : 'Liquidity'}</dt><dd>{market.venue === 'kalshi' ? vol(market.open_interest, 'contracts') : usd(market.liquidity)}</dd></div>
-              <div><dt>Provider end date</dt><dd>{shortDate(market.end_date)}</dd></div>
-              <div><dt>Observed</dt><dd title={absTime(market.observed_at)}>{ago(market.observed_at, now)}</dd></div>
-              <div><dt>Rules</dt><dd><a href={market.resolution_url} target="_blank" rel="noreferrer">{market.venue === 'kalshi' ? 'Market & rules' : 'Resolution criteria'} ↗</a></dd></div>
-            </dl></details>
             {cps.length > 0 && (
               <details className="cps" open={cps.some((c) => c.verified)}>
                 <summary><b>Same question on the other venue?</b> <span className="muted small">{cps.length} {cps.some((c) => c.verified) ? 'verified / ' : ''}candidate{cps.length > 1 ? 's' : ''} — not merged, not averaged</span></summary>
@@ -300,11 +288,27 @@ export function RightPanel({ followMarket, setFollowMarket, sensorSelection, act
                 ))}
               </details>
             )}
+            <div className="ctrlrow">
             <div className="rangebar" role="group" aria-label="Time range">
               {(['24h', '7d', '30d', 'all'] as Range[]).map((r) => <button key={r} className={range === r ? 'on' : ''} onClick={() => updatePrefs({ range: r })}>{r === 'all' ? 'All' : r}</button>)}
-              <span className="muted small grow">{histLoading ? 'Loading history…' : points.length ? `${points.length} points · fetched ${ago(hist?.fetchedAt ?? null, now)}` : ''}</span>
             </div>
-            <details className="chartoptions"><summary>Chart options <span className="muted small">· {(prefs.indicators.length + panes.length + (showTrades && trades?.id === contractId && trades.marks.length > 0 ? 1 : 0)) || 'none'} on · optional, describe the sampled series, not signals</span></summary>
+            <details className="marketstats pop"><summary>Details</summary><div className="popbody"><dl className="stats">
+              <ChangeStat r={byInd.get('change_1h')} title="1h change" />
+              <ChangeStat r={byInd.get('change_24h')} title="24h change" />
+              <div title={mv ? (mv.status === 'ok' ? `Latest adjacent-hour move vs ${mvx.baseline?.n} prior adjacent-hour pairs (type-7 quantiles). ${mvx.caution ?? ''}` : `${mv.status.replace('_', ' ')}: ${mv.reason ?? ''}`) : ''}>
+                <dt>Hourly move vs its history</dt>
+                <dd>{mv?.status === 'ok' && mvx.current && mvx.baseline ? <>{mvx.current.abs_pp.toFixed(1)} pp <span className="muted small">median {mvx.baseline.median_pp.toFixed(1)} · P95 {mvx.baseline.p95_pp.toFixed(1)}</span>{mvx.label?.startsWith('above_p95') && <span className="chip warn">above P95{mvx.caution ? ' · wide spread' : ''}</span>}</> : <span className="muted small">{mv ? mv.status.replace('_', ' ') : '…'}</span>}</dd>
+              </div>
+              <div title="Reported by the venue's own API; its window and reference point are not documented, so it is not comparable to the history-based changes."><dt>Provider-reported 24h / 7d</dt><dd>{market.one_day_change == null && market.one_week_change == null ? <span className="muted small">not provided</span> : <>{pp(market.one_day_change ?? null)} / {pp(market.one_week_change ?? null)}</>}</dd></div>
+              <div><dt>Bid / Ask</dt><dd>{market.best_bid != null && market.best_ask != null ? `${pct(market.best_bid, 1)} / ${pct(market.best_ask, 1)}` : '—'}{market.wide_spread && <span className="chip warn" title="Spread above 10 points: the midpoint is a weak estimate">wide</span>}</dd></div>
+              <div><dt>Volume 24h / total</dt><dd title={market.volume_unit === 'USD' ? 'US dollars' : 'Contracts traded (each pays $1 max); not comparable to USD volume'}>{vol(market.volume_24h, market.volume_unit)} / {vol(market.volume_total, market.volume_unit)}</dd></div>
+              <div><dt>{market.venue === 'kalshi' ? 'Open interest' : 'Liquidity'}</dt><dd>{market.venue === 'kalshi' ? vol(market.open_interest, 'contracts') : usd(market.liquidity)}</dd></div>
+              <div><dt>Provider end date</dt><dd>{shortDate(market.end_date)}</dd></div>
+              <div><dt>Observed</dt><dd title={absTime(market.observed_at)}>{ago(market.observed_at, now)}</dd></div>
+              <div><dt>Rules</dt><dd><a href={market.resolution_url} target="_blank" rel="noreferrer">{market.venue === 'kalshi' ? 'Market & rules' : 'Resolution criteria'} ↗</a></dd></div>
+            </dl></div></details>
+            <details className="chartoptions pop"><summary>Options{(prefs.indicators.length + panes.length + (showTrades && trades?.id === contractId && trades.marks.length > 0 ? 1 : 0)) ? ` · ${prefs.indicators.length + panes.length + (showTrades && trades?.id === contractId && trades.marks.length > 0 ? 1 : 0)}` : ''}</summary>
+            <div className="popbody">
             {trades?.id === contractId && trades.marks.length > 0 && (
               <label className="small tradetoggle" title="Single trades on this pilot market that met the screening criterion (≥ threshold or ≥ this market's P95). ▲ buy, ▼ sell; each marker's own outcome and price are in the tooltip.">
                 <input type="checkbox" checked={showTrades} onChange={(e) => setShowTrades(e.target.checked)} /> Large trades ({trades.marks.length})
@@ -316,7 +320,9 @@ export function RightPanel({ followMarket, setFollowMarket, sensorSelection, act
               <button disabled={!event || !points.length || Date.parse(event.timestamp) < points[0].t * 1000 || Date.parse(event.timestamp) > points[points.length - 1].t * 1000} onClick={() => setZoomRequest((r) => ({ kind: 'publication', sequence: r.sequence + 1 }))}>Center on publication</button>
               <button disabled={points.length === 0} onClick={exportCsv} title="Export historical points and overlays to CSV">Export CSV</button>
             </div>
-            </details>
+            </div></details>
+              {picker}
+            </div>
             <div className="chartwrap">
               <ProbChart onWindow={setPaneWindow} contextKey={contractId ?? ''} zoomRequest={zoomRequest} publication={event ? Date.parse(event.timestamp) : null} overlays={overlays} axis={prefs.axis} trades={visibleTrades} points={points} markers={markers} range={range} label={`${market.outcome_label} probability`} band={band} />
               {histLoading && points.length === 0 && <div className="overlay" role="status">Loading history…</div>}
@@ -327,7 +333,7 @@ export function RightPanel({ followMarket, setFollowMarket, sensorSelection, act
             {bandExcursions > 0 && prefs.indicators.includes('bollinger') && <p className="small muted">Raw bands leave 0–100% at {bandExcursions} point(s); the axis stays within 0–100%, so those band segments are cut off. Bands are not confidence intervals.</p>}
             {paneSpecs.map((q) => <SubPane key={q.id} spec={q} window={paneWindow} />)}
             <p className="muted small caption">
-              History basis: {hist?.basis || '—'}. The headline figure above uses the {market.quote_basis ? BASIS[market.quote_basis].toLowerCase() : 'n/a'}; the two can differ slightly.
+              {histLoading ? 'Loading history… ' : points.length ? `${points.length} points · fetched ${ago(hist?.fetchedAt ?? null, now)}. ` : ''}History basis: {hist?.basis || '—'}. The headline figure above uses the {market.quote_basis ? BASIS[market.quote_basis].toLowerCase() : 'n/a'}; the two can differ slightly.
               {event && <> Vertical line = publication time of the selected item.{!event.linked_contracts.some((c) => c.condition_id === contractId) && <span className="chip warn">Context only: no relevance link to this contract; previous market selection retained.</span>}</>}
             </p>
             {event && (reactionError ? <p className="small" role="alert">Price around publication failed: {reactionError} <button onClick={() => setReactionRetry((n) => n + 1)}>Retry comparison</button></p> : <Reaction r={reactionFor} />)}

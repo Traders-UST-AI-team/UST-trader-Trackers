@@ -67,6 +67,8 @@ export interface TrackerEvent {
   language: string;
   relevant: boolean;
   linked_contracts: LinkedContract[];
+  /** Cached machine-translated English headline for Arabic/Persian items (null until translated). */
+  title_en?: string | null;
   /** true = energy, shipping, sanctions, a chokepoint/energy-company entity or a mapped asset; false = regional context. */
   focus_energy_shipping: boolean;
   /** When the item says the thing happened (day precision), if it says so explicitly; null otherwise. Distinct from publication time. */

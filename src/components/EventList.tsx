@@ -1,24 +1,25 @@
 import { useEffect, useRef } from 'react';
-import { NewsTranslation } from './NewsTranslation';
-import type { TrackerEvent } from '../../shared/types';
+import type { Market, TrackerEvent } from '../../shared/types';
 import { absTime, agoP } from '../format';
 import { navigateContext } from '../navigation';
 
 export const TIER_LABEL: Record<string, string> = { 'Tier-1': 'T1 · Official/Major', 'Tier-2': 'T2 · Regional/Specialist', 'Tier-3': 'T3 · State-affiliated' };
+const TIER_SHORT: Record<string, string> = { 'Tier-1': 'T1', 'Tier-2': 'T2', 'Tier-3': 'T3 · state' };
 
-export function TierBadge({ tier }: { tier: string }) {
-  return <span className={`tier t${tier.slice(-1)}`} title="Publisher-level prior, not a verdict on this claim">{TIER_LABEL[tier] ?? tier}</span>;
+export function TierBadge({ tier, short = false }: { tier: string; short?: boolean }) {
+  return <span className={`tier t${tier.slice(-1)}`} title={`${TIER_LABEL[tier] ?? tier} — publisher-level prior, not a verdict on this claim`}>{short ? TIER_SHORT[tier] ?? tier : TIER_LABEL[tier] ?? tier}</span>;
 }
 
 interface Props {
   events: TrackerEvent[]; selectedId: string | null; onSelect: (e: TrackerEvent) => void; now: number;
   query: string; setQuery: (s: string) => void; topic: string; setTopic: (s: string) => void;
-  tier: string; setTier: (s: string) => void; scope: 'all' | 'focus'; setScope: (s: 'all' | 'focus') => void; showFiltered: boolean; setShowFiltered: (b: boolean) => void; total: number;
+  tier: string; setTier: (s: string) => void; scope: 'all' | 'focus'; setScope: (s: 'all' | 'focus') => void; showFiltered: boolean; setShowFiltered: (b: boolean) => void; total: number; markets?: Market[]; simple?: boolean; setSimple?: (b: boolean) => void;
 }
 
 const TOPICS = ['all', 'security', 'shipping', 'energy', 'sanctions', 'diplomacy', 'nuclear', 'humanitarian', 'politics'];
 
 export function EventList(p: Props) {
+  const byId = new Map((p.markets ?? []).map((m) => [m.condition_id, m]));
   const cardsRef = useRef<HTMLOListElement>(null);
   const isFirstMount = useRef(true);
 
@@ -65,7 +66,7 @@ export function EventList(p: Props) {
           </label>
         </div>
         </details>
-        <div className="muted small">{p.events.length} shown of {p.total} stored · newest first · <button className="linkbtn" onClick={() => navigateContext({ tab: 'briefing' }, 'research')} title="What changed in the last 24 h, cited (b)">Change briefing →</button></div>
+        <div className="muted small">{p.events.length === p.total ? p.total : `${p.events.length} of ${p.total}`} items · <button className="linkbtn" onClick={() => navigateContext({ tab: 'briefing' }, 'research')} title="What changed in the last 24 h, cited (b)">Briefing →</button>{p.setSimple && <> · <button className="linkbtn" onClick={() => p.setSimple!(!p.simple)} title="Switch between the plain view and the full detail view">{p.simple ? 'Detailed view' : 'Simple view'}</button></>}</div>
       </div>
       <ol className="cards" ref={cardsRef}>
         {p.events.map((e) => (
@@ -73,22 +74,26 @@ export function EventList(p: Props) {
             <button className={`card ${p.selectedId === e.id ? 'sel' : ''} ${e.relevant ? '' : 'dim'}`} onClick={() => p.onSelect(e)}>
               <div className="meta">
                 <span className="src">{e.source_name.split(' — ')[0]}</span>
-                <TierBadge tier={e.reliability_tier} />
+                <TierBadge tier={e.reliability_tier} short />
+                {e.title_en && <span className="mt" title="Machine-translated headline (MyMemory); the original is shown below">EN</span>}
                 <time title={absTime(e.timestamp)}>{agoP(e.timestamp, e.time_precision, p.now)}</time>
               </div>
-              <h3 dir={e.language === 'ar' || e.language === 'fa' ? 'rtl' : 'auto'}>{e.title}</h3>
-              <div className="chips">
-                {e.location && <span className="chip loc" title={`Place named in the text (${e.location.precision}); not a verified incident coordinate`}>{e.location.name}{e.location.precision === 'country' ? ' · approx.' : ''}</span>}
-                {e.topics.slice(0, 3).map((t) => <span className="chip" key={t}>{t}</span>)}
-                {e.language !== 'en' && <span className="chip warn" title="Shown in the original language; entity/topic matching uses a small hand-written dictionary">{e.language} · original</span>}
-                {e.story && <span className="chip story" title={e.story.note}>{e.story.size} outlets · related coverage</span>}
-                {e.focus_energy_shipping && <span className="chip" title="Energy, shipping, sanctions, chokepoint or mapped asset">energy/shipping</span>}
-                {e.assets.length > 0 && <span className="chip" title="Curated reference assets this item names or is located at">{e.assets.length} asset{e.assets.length > 1 ? 's' : ''}</span>}
-                {e.linked_contracts.length > 0 && <span className="chip link" title="Contracts that name the same entity and topic">{e.linked_contracts.length} contract{e.linked_contracts.length > 1 ? 's' : ''}</span>}
+              <h3 dir={e.title_en ? 'ltr' : e.language === 'ar' || e.language === 'fa' ? 'rtl' : 'auto'} lang={e.title_en ? 'en' : e.language}>{e.title_en ?? e.title}</h3>
+              {e.title_en && <div className="orig" dir="rtl" lang={e.language}>{e.title}</div>}
+              {(e.language !== 'en' && !e.title_en) || !e.relevant ? <div className="chips">
+                {e.language !== 'en' && !e.title_en && <span className="chip warn" title="Not translated yet (the free daily translation budget is limited); shown in the original language">{e.language} · untranslated</span>}
                 {!e.relevant && <span className="chip warn">filtered out</span>}
-              </div>
+              </div> : null}
+              {e.linked_contracts[0] && (() => {
+                const c = e.linked_contracts[0]; const m = byId.get(c.condition_id); const d = m?.one_day_change;
+                return <div className="touch" title={`${c.question}${d == null ? '' : ' — 24h change as reported by the venue'}`}>
+                  <span className="tq">{c.question.length > 52 ? `${c.question.slice(0, 51)}…` : c.question}</span>
+                  <b>{c.price == null ? '—' : `${(c.price * 100).toFixed(1)}%`}</b>
+                  {d != null && <span className={`dlt ${d > 0 ? 'up' : d < 0 ? 'down' : ''}`}>{d > 0 ? '▲' : d < 0 ? '▼' : '–'} {Math.abs(d * 100).toFixed(1)} pp</span>}
+                  {e.linked_contracts.length > 1 && <span className="more">+{e.linked_contracts.length - 1}</span>}
+                </div>;
+              })()}
             </button>
-            {e.language === 'ar' && <NewsTranslation key={`${e.id}:${e.title}:${e.summary}`} eventId={e.id} automatic={p.selectedId === e.id} compact />}
           </li>
         ))}
         {p.events.length === 0 && <li className="empty">No events match. Data may still be loading, or filters are too narrow.</li>}

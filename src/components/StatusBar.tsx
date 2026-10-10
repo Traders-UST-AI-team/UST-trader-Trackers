@@ -40,34 +40,41 @@ export function StatusBar({ status, onRefresh, now, view, setView, unread, alert
   const refreshing = status?.refreshing ?? false;
   const srcs = status?.sources ?? [];
   const count = (c: Cls) => srcs.filter((s) => clsOf(s) === c).length;
+
+  const problems = count('stale') + count('err') + count('never');
+  const [menu, setMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const outside = (e: PointerEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenu(false); };
+    const escape = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(false); };
+    document.addEventListener('pointerdown', outside); document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape); };
+  }, [menu]);
+
   return (
-    <header className="topbar">
-      <div className="brand">
-        <span className="logo" aria-hidden />
-        <div>
-          <h1>War Tracker</h1>
-          <p className="muted">Evidence &amp; provenance research desk · geopolitical events, markets, sources</p>
-        </div>
-      </div>
+    <header className="topbar slim">
+      <div className="brand"><span className="logo" aria-hidden /><h1>War Tracker</h1></div>
+
       <nav className="viewnav" aria-label="View">
-        <button className={view === 'dashboard' ? 'on' : ''} onClick={() => setView('dashboard')} title="Items → contracts → price → save (1)">Monitor</button>
-        <button className={view === 'feed' || view === 'telegram' ? 'on' : ''} onClick={() => setView('feed')} title="All sources, including Telegram (2)">Feed{unread ? <span className="badge" title="Unread arrivals (backfill excluded)">{unread > 99 ? '99+' : unread}</span> : null}</button>
-        <button className={view === 'wallets' ? 'on' : ''} onClick={() => setView('wallets')} title="Pilot markets, large trades, watched wallets (3)">Markets</button>
-        <button className={view === 'research' ? 'on' : ''} onClick={() => setView('research')} title="Briefing, dossiers, hypotheses (4)">Research</button>
-        <button className={view === 'sources' || view === 'alerts' ? 'on' : ''} onClick={() => setView('sources')} title="Collection health and alerts (5)">Sources &amp; alerts{alerts ? <span className="badge" title="Unacknowledged in-app alerts">{alerts > 99 ? '99+' : alerts}</span> : null}</button>
+          <button className={view === 'dashboard' ? 'on' : ''} onClick={() => setView('dashboard')} title="Items → contracts → price → save (1)">Monitor</button>
+          <button className={view === 'feed' || view === 'telegram' ? 'on' : ''} onClick={() => setView('feed')} title="All sources, including Telegram (2)">Feed{unread ? <span className="badge" title="Unread arrivals (backfill excluded)">{unread > 99 ? '99+' : unread}</span> : null}</button>
+          <button className={view === 'wallets' ? 'on' : ''} onClick={() => setView('wallets')} title="Pilot markets, large trades, watched wallets (3)">Markets</button>
+          <button className={view === 'research' ? 'on' : ''} onClick={() => setView('research')} title="Briefing, dossiers, hypotheses (4)">Research</button>
+          <button className={view === 'sources' || view === 'alerts' ? 'on' : ''} onClick={() => setView('sources')} title="Collection health and alerts (5)">Sources &amp; alerts{alerts ? <span className="badge" title="Unacknowledged in-app alerts">{alerts > 99 ? '99+' : alerts}</span> : null}</button>
       </nav>
+
       <div ref={health} className="sources" aria-label="Source health">
-        <button className="healthsum" onClick={() => setOpen(!open)} aria-expanded={open} title="Show every source">
-          <b>{srcs.length} sources</b>
-          <span className="ok">{count('ok')} OK</span>
-          {count('stale') > 0 && <span className="stale">◐ {count('stale')} stale</span>}
-          {count('err') > 0 && <span className="err">✕ {count('err')} failed</span>}
-          {count('never') > 0 && <span className="never">○ {count('never')} pending</span>}
-          {count('blocked') > 0 && <span className="blocked">○ {count('blocked')} not connected</span>}
-          <span className="caret">{open ? '▴' : '▾'}</span>
+        <button className={`healthsum ${problems ? 'warn' : 'good'}`} onClick={() => setOpen(!open)} aria-expanded={open} title="Show every source">
+          {problems === 0 ? <span className="ok">● all sources OK</span> : <>
+            {count('err') > 0 && <span className="err">✕ {count('err')} failed</span>}
+            {count('stale') > 0 && <span className="stale">◐ {count('stale')} stale</span>}
+            {count('never') > 0 && <span className="never">○ {count('never')} pending</span>}
+          </>}
         </button>
         {open && (
           <div className="healthpanel" role="region" aria-label="All sources">
+            <p className="small"><b>{srcs.length} sources</b> · {count('ok')} OK{count('blocked') > 0 ? ` · ${count('blocked')} not connected` : ''} · last refresh {ago(status?.last_refresh_finished_at ?? null, now)}</p>
             {ORDER.filter((k) => srcs.some((s) => s.kind === k)).map((k) => (
               <div key={k}>
                 <h5>{KIND[k]}</h5>
@@ -78,11 +85,18 @@ export function StatusBar({ status, onRefresh, now, view, setView, unread, alert
           </div>
         )}
       </div>
-      <div className="refresh">
-        {onOpenShortcuts && <button className="shortcuts-btn" onClick={onOpenShortcuts} title="Keyboard shortcuts (?)">⌨ <span className="kbd-badge">?</span></button>}
-        <select aria-label="Theme" value={theme} onChange={(e) => setTheme(e.target.value)}><option value="system">System theme</option><option value="light">Light</option><option value="dark">Dark</option></select>
-        <span className="muted small">Last refresh {ago(status?.last_refresh_finished_at ?? null, now)}</span>
-        <button onClick={onRefresh} disabled={refreshing || status?.mode === 'seed'} title={status?.mode === 'seed' ? 'Disabled in offline seed mode' : undefined}>{refreshing ? 'Refreshing…' : 'Refresh now'}</button>
+
+      <div className="topactions">
+        <button className="iconbtn primary" onClick={onRefresh} disabled={refreshing || status?.mode === 'seed'} aria-label="Refresh now" title={status?.mode === 'seed' ? 'Disabled in offline seed mode' : `Refresh now (r) — last refresh ${ago(status?.last_refresh_finished_at ?? null, now)}`}>{refreshing ? '…' : '⟳'}</button>
+        <div ref={menuRef} className="menuwrap">
+          <button className="iconbtn" onClick={() => setMenu(!menu)} aria-expanded={menu} aria-label="More" title="Theme, keyboard shortcuts">⋯</button>
+          {menu && (
+            <div className="menupop" role="menu">
+              <label className="small">Theme <select aria-label="Theme" value={theme} onChange={(e) => setTheme(e.target.value)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+              {onOpenShortcuts && <button role="menuitem" onClick={() => { setMenu(false); onOpenShortcuts(); }}>Keyboard shortcuts <span className="kbd-badge">?</span></button>}
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

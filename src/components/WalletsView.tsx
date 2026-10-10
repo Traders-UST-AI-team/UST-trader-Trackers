@@ -131,7 +131,7 @@ export function WalletsView({ now, versionKey, onOpenMarket }: { now: number; ve
   const ro = d.seed_mode;
   return (
     <main className="walletsview">
-      <ul className="notes small">{d.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
+      <details className="aboutdata small"><summary>About this data — a wallet address is not a person; large trade = screening rule, not a signal</summary><ul className="notes small">{d.notes.map((n, i) => <li key={i}>{n}</li>)}</ul></details>
 
       <section className="panel">
         <h3>Large trades on pilot markets <span className="muted small">— market tape (taker side, each fill once)</span></h3>

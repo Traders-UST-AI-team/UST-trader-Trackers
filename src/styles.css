@@ -28,6 +28,10 @@ button { cursor: pointer; }
 .app { height: 100%; display: flex; flex-direction: column; }
 
 .topbar { display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface-1); flex-wrap: wrap; }
+.workspace-switcher { display: flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 2px; gap: 2px; }
+.ws-btn { background: transparent; border: 0; border-radius: 6px; padding: 4px 10px; font-size: 12px; font-weight: 600; color: var(--text-secondary); cursor: pointer; transition: all 0.15s ease; }
+.ws-btn:hover { color: var(--text-primary); }
+.ws-btn.active { background: var(--surface-1); color: var(--text-primary); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
 .brand { display: flex; gap: 10px; align-items: center; }
 .brand h1 { font-size: 16px; line-height: 1.1; }
 .logo { width: 24px; height: 24px; border-radius: 6px; background: var(--series-1); position: relative; }
@@ -531,3 +535,114 @@ textarea { background: var(--surface-1); }
 /* Numbers: tabular figures, a mono face when available (self-hosted fonts are a later step; nothing is fetched from a font CDN). */
 .num, .big b, .mhead .big b, .stats dd, .pill b, .badge { font-variant-numeric: tabular-nums; }
 .big b, .stats dd { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* One slim header row: workspace, five destinations, one status, refresh, more. */
+header.topbar.slim { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 7px 14px; }
+.slim .brand { gap: 8px; } .slim .logo { width: 22px; height: 22px; }
+.slim .wsselect { font-weight: 700; font-size: 14px; border: 0; background: transparent; padding: 4px 0; color: var(--text-primary); cursor: pointer; }
+.slim .viewnav { justify-self: auto; margin-right: auto; }
+.slim .sources { flex: 0 0 auto; min-width: 0; padding: 0; grid-row: auto; }
+.slim .healthsum { border: 0; background: transparent; padding: 4px 6px; gap: 10px; }
+.slim .topactions { display: flex; align-items: center; gap: 6px; }
+.iconbtn { width: 32px; height: 32px; border: 1px solid var(--border); background: var(--surface-2); border-radius: 8px; font-size: 16px; line-height: 1; padding: 0; color: var(--text-primary); }
+.iconbtn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); } .iconbtn:disabled { opacity: .6; cursor: progress; }
+.menuwrap { position: relative; } .menupop { position: absolute; right: 0; top: 38px; z-index: 40; min-width: 210px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 10px; display: grid; gap: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+.menupop button { text-align: left; border: 1px solid var(--border); background: var(--surface-2); border-radius: 6px; padding: 6px 10px; }
+@media (max-width: 760px) { header.topbar.slim .viewnav { order: 5; width: 100%; margin-right: 0; } header.topbar.slim .sources { margin-left: auto; } }
+.touches { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; } .touches button { flex: 0 0 auto; white-space: nowrap; }
+.changecontract { margin: 0 0 2px; }
+.aboutdata > summary { cursor: pointer; color: var(--text-secondary); padding: 4px 0; }
+
+/* Chart panel: title + price, then one control row; Contract / Details / Options open as popovers over the chart */
+.ctrlrow { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 6px 0 4px; }
+.ctrlrow > .rangebar { margin-right: auto; }
+.ctrlrow details.pop { position: static; margin: 0; }
+.ctrlrow details.pop > summary { list-style: none; cursor: pointer; border: 1px solid var(--border); background: var(--surface-2); border-radius: 6px; padding: 3px 10px; font-size: 12px; color: var(--text-primary); }
+.ctrlrow details.pop > summary::-webkit-details-marker { display: none; }
+.ctrlrow details.pop[open] > summary { border-color: var(--accent); }
+.ctrlrow details.pop > .popbody { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20; max-height: 60vh; overflow: auto; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.28); }
+.chartoptions[open], .changecontract[open] { border: 0; padding: 0; background: none; }
+.mhead h2 .venue { font-size: 11px; vertical-align: middle; margin-right: 4px; }
+.chartpanel { padding: 10px 12px; }
+.slim .brand { flex: 1 1 0; min-width: 0; } .slim .wsselect { max-width: 100%; text-overflow: ellipsis; }
+@media (min-width: 761px) { .slim .brand { flex: 0 0 auto; } }
+
+/* Plain Monitor detail */
+.simple { padding: 20px 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; min-width: 0; max-width: 860px; }
+.simple h2 { font-size: 20px; line-height: 1.3; overflow-wrap: anywhere; }
+.pickrow { display: flex; flex-wrap: wrap; gap: 8px; }
+.pickrow button { border: 1px solid var(--border); background: var(--surface-2); border-radius: 8px; padding: 6px 12px; text-align: left; font-size: 13px; }
+.pickrow button.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--surface-1); }
+.simplechart { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.simplehead { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.simpleprice b { font-size: 26px; font-variant-numeric: tabular-nums; }
+.simpleactions { display: flex; gap: 8px; }
+.primarybtn { background: var(--accent); color: var(--on-accent); border: 0; border-radius: 8px; padding: 8px 16px; font-weight: 600; }
+.primarybtn:disabled { opacity: .6; }
+.split:has(.simple) { grid-template-columns: minmax(300px, 34%) minmax(0, 1fr); }
+
+/* ───────── Polish layer: flat, hairline-separated, quiet. Colour is kept for state and primary actions only. ───────── */
+body { font-size: 13.5px; line-height: 1.5; letter-spacing: .005em; -webkit-font-smoothing: antialiased; }
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+
+/* header: text tabs with an underline, no filled pills */
+header.topbar.slim { background: var(--bg); border-bottom: 1px solid var(--border); padding: 0 16px; min-height: 48px; gap: 4px 18px; }
+.workspace-switcher { background: transparent; border: 0; padding: 0; gap: 2px; }
+.ws-btn { font-size: 12px; font-weight: 500; padding: 5px 9px; color: var(--muted); border-radius: 6px; }
+.ws-btn.active { background: var(--surface-2); color: var(--text-primary); box-shadow: none; }
+.viewnav { border: 0; border-radius: 0; overflow: visible; gap: 2px; align-self: stretch; align-items: stretch; }
+.viewnav button { background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 0 12px; color: var(--text-secondary); font-weight: 500; font-size: 13px; }
+.viewnav button:hover { color: var(--text-primary); }
+.viewnav button.on { background: transparent; color: var(--text-primary); border-bottom-color: var(--accent); }
+.badge { background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--border); font-weight: 600; }
+.healthsum span { font-size: 12px; } .healthsum.good .ok { color: var(--text-secondary); }
+.iconbtn { background: transparent; border-color: var(--border); }
+.iconbtn.primary { background: transparent; color: var(--text-primary); border-color: var(--border); } .iconbtn.primary:hover { border-color: var(--accent); color: var(--accent); }
+
+/* surfaces: flat panes separated by hairlines instead of boxes */
+.panel, .researchview .panel { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 14px 18px; }
+.right { gap: 0; padding: 0; }
+.right > .panel + .panel { border-left: 1px solid var(--border); }
+.events { background: var(--bg); }
+.filters { border-bottom: 1px solid var(--border); padding: 10px 14px; }
+.filters input[type=search] { background: var(--surface-1); border-radius: 8px; padding: 8px 12px; }
+
+/* news list */
+.card { border-left: 0; border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent); padding: 12px 16px; }
+.card.sel { background: var(--surface-2); border-left: 0; box-shadow: inset 2px 0 0 var(--accent); }
+.card h3 { font-weight: 500; font-size: 14px; margin: 3px 0 4px; }
+.meta { font-size: 11.5px; gap: 8px; } .src { font-weight: 500; color: var(--text-primary); }
+.tier { border-color: var(--border); color: var(--text-secondary); font-weight: 500; font-size: 10.5px; padding: 0 6px; letter-spacing: .02em; }
+.tier.t3 { color: var(--aff); border-color: color-mix(in srgb, var(--aff) 45%, var(--border)); }
+.chip { background: transparent; border-color: var(--border); color: var(--text-secondary); }
+.chip.link { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, var(--border)); }
+
+/* controls: quiet outline buttons; solid colour only for the primary action */
+.rangebar button, .tabs button, .seg button, .ctrlrow details.pop > summary, .touches button, .pickrow button { background: transparent; border-color: var(--border); color: var(--text-secondary); font-weight: 500; }
+.rangebar button:hover, .tabs button:hover, .seg button:hover { color: var(--text-primary); border-color: var(--muted); }
+.rangebar button.on, .tabs button.on, .seg button.on { background: var(--surface-2); color: var(--text-primary); border-color: var(--muted); }
+.touches button.on, .pickrow button.on { background: var(--surface-2); color: var(--text-primary); border-color: var(--accent); box-shadow: none; }
+.btn, .primarybtn { background: var(--accent); color: var(--on-accent); }
+
+/* headings and numbers */
+.mhead h2, .simple h2 { font-weight: 600; font-size: 15.5px; letter-spacing: 0; }
+.big b, .simpleprice b { font-size: 28px; font-weight: 600; letter-spacing: -.01em; }
+.panel h4, .panel h5, .detail h4, .detail h5 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 14px 0 6px; }
+.muted, .small.muted { color: var(--muted); }
+details > summary { color: var(--text-secondary); }
+.lower > .tabs { background: var(--bg); }
+.simplechart { background: transparent; border: 0; border-top: 1px solid var(--border); border-radius: 0; padding: 14px 0 0; }
+header.topbar.slim .sources, header.topbar.slim .topactions { width: auto; grid-row: auto; padding-right: 0; flex: 0 0 auto; }
+@media (max-width: 760px) { header.topbar.slim { padding: 6px 12px 0; } header.topbar.slim .viewnav { order: 5; width: 100%; margin: 0; overflow-x: auto; } header.topbar.slim .viewnav button { padding: 10px 12px; white-space: nowrap; } header.topbar.slim .topactions { margin-left: auto; } }
+.ctrlrow details.pop { display: flex; align-items: center; } .ctrlrow details.pop > summary { line-height: 1.5; }
+
+/* Trader-glance rows: source · time, English headline, one contract with price and 24h move */
+.mt { font-size: 10px; font-weight: 600; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; letter-spacing: .04em; }
+.card .orig { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: -2px 0 4px; }
+.card .touch { display: flex; align-items: baseline; gap: 8px; font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+.card .touch .tq { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+.card .touch b { color: var(--text-primary); font-variant-numeric: tabular-nums; font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
+.card .touch .dlt { font-variant-numeric: tabular-nums; color: var(--text-secondary); white-space: nowrap; }
+.card .touch .more { color: var(--muted); }
+.simple .orig { margin: -6px 0 0; }

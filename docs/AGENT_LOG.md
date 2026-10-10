@@ -1,3 +1,11 @@
+## Trader-glance Monitor and automatic headline translation (2026-10-10)
+
+The owner said the screen must give a trader the key facts at a glance and that Arabic items were still untranslated. Monitor now defaults to a plain view (item, the contract it touches with price, one chart with the publication line, Save to dossier; "Detailed view" in the list header restores the full panel). News rows show source · tier (T1/T2/T3·state) · time, the English headline (original in grey underneath), and one contract with price and the venue-reported 24 h move. Arabic **and Persian** headlines are translated automatically in the background (`headline-translation` job, 4 per minute, items linked to a contract first, then newest), cached, charged by title length against the same free daily budget (about 4,500 characters), labelled "EN" (machine translation), HTML escapes decoded. Items beyond the budget stay in the original language with an "untranslated" tag. Machine translation of names can be wrong (a Persian name was rendered as "doctors"); the original always stays visible. Seed mode never calls the provider.
+
+## Header simplification (2026-10-10)
+
+The owner found the top of the screen still too busy. The header is now one row: brand, five destinations, one status (all OK, or only the problems), refresh icon, and a ⋯ menu (theme, shortcuts). Tagline, per-source counts, theme select and the watchlist strip are gone from Monitor (the watchlist now sits on Markets); the Touches strip is one scrollable line; Markets notes sit behind "About this data".
+
 ## Repository clean-up (2026-10-10)
 
 Old planning/report files were moved to `docs/archive/` and later deleted at the owner's request (still in the first Git commit); the empty `data/tracker.db` was removed. Before publishing: no secrets or personal data found in the tree; live databases, the demo seed, review kits containing third-party text and screenshots are excluded by `.gitignore`. Regenerate the demo seed with `npm run seed:export` after a live run.

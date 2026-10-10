@@ -1,4 +1,4 @@
-import { cachedNewsTranslation, createNewsTranslator } from './translation.ts';
+import { cachedHeadlines, cachedNewsTranslation, createNewsTranslator, registerHeadlineJob } from './translation.ts';
 import express from 'express';
 import { createServer as createVite } from 'vite';
 import { resolve, dirname } from 'node:path';
@@ -107,10 +107,12 @@ app.get('/api/events', (req, res) => {
   const limit = Math.min(Number(req.query.limit ?? 300), 1000);
   const rows = db.prepare(`SELECT * FROM events ${includeFiltered ? '' : 'WHERE relevant = 1'} ORDER BY published_at DESC LIMIT ?`).all(limit) as Row[];
   const links = linksFor(rows.map((r) => r.id));
-  res.json(rows.map((r) => toEvent(r, links.get(r.id) ?? [])));
+  const heads = cachedHeadlines(db, rows as never);
+  res.json(rows.map((r) => ({ ...toEvent(r, links.get(r.id) ?? []), title_en: heads.get(r.id) ?? null })));
 });
 
 const translateNews = createNewsTranslator(db, { seed: SEED });
+registerHeadlineJob(db, { seed: SEED });
 app.get('/api/events/:id/translation', (req, res) => res.json(cachedNewsTranslation(db, req.params.id)));
 app.post('/api/events/:id/translation', async (req, res) => {
   try { res.json(await translateNews(req.params.id)); }
@@ -120,7 +122,7 @@ app.post('/api/events/:id/translation', async (req, res) => {
 app.get('/api/events/:id', (req, res) => {
   const row = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id) as Row | undefined;
   if (!row) return res.status(404).json({ error: 'This news item is no longer available in the tracker.' });
-  res.json(toEvent(row, linksFor([row.id]).get(row.id) ?? []));
+  res.json({ ...toEvent(row, linksFor([row.id]).get(row.id) ?? []), title_en: cachedHeadlines(db, [row as never]).get(row.id) ?? null });
 });
 
 app.get('/api/markets', (_req, res) => {
