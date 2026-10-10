@@ -1,0 +1,17 @@
+# What `gcloud run deploy --source .` uploads to Cloud Build. Mirrors .dockerignore.
+.gcloudignore
+.git
+.gitignore
+node_modules
+dist
+.claude
+*.log
+.DS_Store
+data/*.sqlite*
+data/tracker.db
+data/demo_seed.json
+data/inbox/*.eml
+docs/screenshots/
+docs/review/
+.env
+.env.*

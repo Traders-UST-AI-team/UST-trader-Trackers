@@ -1,10 +1,13 @@
 import type { Express, Request, Response } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
-import { getProductDashboardSummary, listReviews } from './service.ts';
+import { listReviews } from './service.ts';
 import { sniffAndParseReviews } from './sniffer.ts';
 import { DEFAULT_CHAIN_BUDGET_MS, scoreReview, scorerReachability } from './jev.ts';
 import { ingestReviews, type Scorer } from './ingest.ts';
 import { fetchBestBuyReviews, fetchRedditCanaries, CanaryUnavailableError, type CanaryDeps } from './adapters.ts';
+import { getDashboardSummary, toCompany, toProduct } from './service.ts';
+import { addCompany, collectProduct, connectorStatus, listRuns, setProductActive, syncFinancials, updateCompany, upsertProduct, watchlist, WatchlistError, type TrackerDeps } from './tracker.ts';
+import { lookupCompany } from './edgar.ts';
 import type { ReviewRaw, ReviewStatusResponse } from '../../shared/review-types.ts';
 
 /**
@@ -13,6 +16,8 @@ import type { ReviewRaw, ReviewStatusResponse } from '../../shared/review-types.
  * and the operator gets an unexplained failure. Boot code passes this to `express.json`.
  */
 export const REVIEWS_JSON_LIMIT = '8mb';
+/** The only endpoints that accept a whole CSV export; every other route keeps express's default. */
+export const REVIEWS_LARGE_BODY_PATHS = ['/api/reviews/sniff', '/api/reviews/import'];
 
 /** Dependencies the routes accept rather than create, so tests can supply fakes. */
 export interface ReviewRouteDeps {
@@ -20,7 +25,20 @@ export interface ReviewRouteDeps {
   canary?: CanaryDeps;
   /** Scorer used by every write path. Production leaves it unset and uses the provider chain. */
   scorer?: Scorer;
+  /** Collectors, EDGAR and environment for the watchlist routes; tests supply fakes. */
+  tracker?: TrackerDeps;
 }
+
+/** Sends a watchlist rule violation with its own status, anything else as a 500. */
+function fail(res: Response, err: unknown) {
+  if (err instanceof WatchlistError) return res.status(err.status).json({ error: err.message });
+  res.status(500).json({ error: (err as Error).message });
+}
+
+const intParam = (v: unknown): number | undefined => {
+  const n = typeof v === 'string' ? Number.parseInt(v, 10) : NaN;
+  return Number.isFinite(n) ? n : undefined;
+};
 
 /**
  * `store` is accepted, not created: the caller owns the connection and its lifetime, so tests can
@@ -29,6 +47,99 @@ export interface ReviewRouteDeps {
 export function registerReviewRoutes(app: Express, store: DatabaseSync, deps: ReviewRouteDeps = {}): void {
   const db = store;
   const scorer = deps.scorer ?? scoreReview;
+  const trackerDeps: TrackerDeps = { ...deps.tracker, scorer, canary: deps.canary ?? deps.tracker?.canary };
+  const lookups = new Map<string, { at: number; value: Awaited<ReturnType<typeof lookupCompany>> }>();
+
+  // ── watchlist ─────────────────────────────────────────────────────────────────────────────────
+
+  app.get('/api/reviews/watchlist', (_req: Request, res: Response) => {
+    try {
+      res.json(watchlist(db));
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  app.get('/api/reviews/connectors', (_req: Request, res: Response) => {
+    res.json(connectorStatus(trackerDeps.env));
+  });
+
+  // A preview of what adding a ticker will store; cached so typing does not hammer EDGAR.
+  app.get('/api/reviews/lookup', async (req: Request, res: Response) => {
+    const ticker = String(req.query.ticker ?? '').trim().toUpperCase();
+    if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(ticker)) return res.status(400).json({ error: 'A ticker is required.' });
+    const cached = lookups.get(ticker);
+    if (cached && Date.now() - cached.at < 6 * 3_600_000) return res.json({ found: cached.value });
+    try {
+      const value = await lookupCompany(ticker, trackerDeps.edgar);
+      lookups.set(ticker, { at: Date.now(), value });
+      res.json({ found: value });
+    } catch (err) {
+      res.status(503).json({ error: `SEC EDGAR could not be reached: ${(err as Error).message}` });
+    }
+  });
+
+  app.post('/api/reviews/companies', async (req: Request, res: Response) => {
+    try {
+      const company = await addCompany(db, req.body ?? {}, trackerDeps);
+      // The first read of its filings happens now, so the new row is useful immediately.
+      const financials = company.financials_synced_at ? null : await syncFinancials(db, company, { ...trackerDeps, trigger: 'manual' });
+      res.status(201).json({ company: toCompany(db.prepare('SELECT * FROM companies WHERE ticker = ?').get(company.ticker) as any), financials });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  app.patch('/api/reviews/companies/:ticker', (req: Request, res: Response) => {
+    try {
+      res.json(updateCompany(db, String(req.params.ticker).toUpperCase(), req.body ?? {}));
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  app.post('/api/reviews/companies/:ticker/financials', async (req: Request, res: Response) => {
+    try {
+      const row = db.prepare('SELECT * FROM companies WHERE ticker = ?').get(String(req.params.ticker).toUpperCase()) as any;
+      if (!row) return res.status(404).json({ error: 'Not on the watchlist.' });
+      res.json(await syncFinancials(db, toCompany(row), { ...trackerDeps, trigger: 'manual' }));
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  app.patch('/api/reviews/products/:asin', (req: Request, res: Response) => {
+    try {
+      if (typeof req.body?.is_active !== 'boolean') return res.status(400).json({ error: 'is_active (boolean) is required.' });
+      res.json(setProductActive(db, String(req.params.asin).toUpperCase(), req.body.is_active));
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Collect now: one listing, or every active listing of a company.
+  app.post('/api/reviews/collect', async (req: Request, res: Response) => {
+    try {
+      const { asin, ticker } = req.body ?? {};
+      const rows = asin
+        ? db.prepare('SELECT * FROM products WHERE asin = ?').all(String(asin))
+        : db.prepare('SELECT * FROM products WHERE ticker = ? AND is_active = 1').all(String(ticker ?? ''));
+      if (rows.length === 0) return res.status(404).json({ error: 'No active listing to collect.' });
+      const runs = [];
+      for (const row of rows) runs.push(...(await collectProduct(db, toProduct(row as any), { ...trackerDeps, trigger: 'manual' })));
+      res.json({ runs });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  app.get('/api/reviews/runs', (req: Request, res: Response) => {
+    res.json(listRuns(db, {
+      ticker: typeof req.query.ticker === 'string' ? req.query.ticker : undefined,
+      asin: typeof req.query.asin === 'string' ? req.query.asin : undefined,
+      limit: intParam(req.query.limit),
+    }));
+  });
 
   // 1. Companies list
   app.get('/api/reviews/companies', (_req: Request, res: Response) => {
@@ -48,70 +159,36 @@ export function registerReviewRoutes(app: Express, store: DatabaseSync, deps: Re
         ? 'SELECT * FROM products WHERE ticker = ? ORDER BY is_active DESC, asin ASC'
         : 'SELECT * FROM products ORDER BY is_active DESC, asin ASC';
       const rows = ticker ? db.prepare(sql).all(ticker) : db.prepare(sql).all();
-      res.json(rows);
+      res.json(rows.map((r) => toProduct(r as any)));
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
     }
   });
 
-  // 3. Add or update product
+  // 3. Add or update a listing (the company must be on the watchlist)
   app.post('/api/reviews/products', (req: Request, res: Response) => {
     try {
-      const { asin, ticker, title, category, amazon_url, bestbuy_sku, reddit_query } = req.body;
-      if (!asin || !ticker || !title) {
-        return res.status(400).json({ error: 'asin, ticker, and title are required' });
-      }
-
-      // Ensure company exists
-      const company = db.prepare('SELECT 1 FROM companies WHERE ticker = ?').get(ticker);
-      if (!company) {
-        db.prepare('INSERT INTO companies (ticker, name) VALUES (?, ?)').run(ticker, ticker);
-      }
-
-      const stmt = db.prepare(`
-        INSERT INTO products (asin, ticker, title, category, amazon_url, bestbuy_sku, reddit_query)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(asin) DO UPDATE SET
-          title = excluded.title,
-          category = excluded.category,
-          amazon_url = excluded.amazon_url,
-          bestbuy_sku = excluded.bestbuy_sku,
-          reddit_query = excluded.reddit_query
-      `);
-      stmt.run(
-        asin,
-        ticker,
-        title,
-        category || null,
-        amazon_url || `https://www.amazon.com/dp/${asin}`,
-        bestbuy_sku || null,
-        reddit_query || title.slice(0, 20)
-      );
-
-      res.status(201).json({ success: true, asin });
+      res.status(201).json(upsertProduct(db, req.body ?? {}));
     } catch (err) {
-      res.status(500).json({ error: (err as Error).message });
+      fail(res, err);
     }
   });
 
-  // 4. Dashboard summary
+  // 4. Dashboard summary: one listing (asin) or a whole company (ticker)
   app.get('/api/reviews/dashboard', (req: Request, res: Response) => {
     try {
-      let asin = req.query.asin as string | undefined;
-      if (!asin) {
-        // default to first product
-        const first = db.prepare('SELECT asin FROM products WHERE is_active = 1 LIMIT 1').get() as { asin: string } | undefined;
-        asin = first?.asin ?? 'B003NR57BY';
+      const asin = typeof req.query.asin === 'string' && req.query.asin ? req.query.asin : undefined;
+      let ticker = typeof req.query.ticker === 'string' && req.query.ticker ? req.query.ticker.toUpperCase() : undefined;
+      if (!asin && !ticker) {
+        const first = db.prepare('SELECT ticker FROM companies WHERE is_active = 1 ORDER BY ticker LIMIT 1').get() as { ticker: string } | undefined;
+        if (!first) return res.status(404).json({ error: 'The watchlist is empty. Add a company first.' });
+        ticker = first.ticker;
       }
-
-      const summary = getProductDashboardSummary(db, asin);
-      if (!summary) {
-        return res.status(404).json({ error: `Product with ASIN ${asin} not found` });
-      }
-
+      const summary = getDashboardSummary(db, { asin, ticker });
+      if (!summary) return res.status(404).json({ error: asin ? `No product ${asin}.` : `${ticker} is not on the watchlist.` });
       res.json(summary);
     } catch (err) {
-      res.status(500).json({ error: (err as Error).message });
+      fail(res, err);
     }
   });
 
@@ -119,16 +196,19 @@ export function registerReviewRoutes(app: Express, store: DatabaseSync, deps: Re
   app.get('/api/reviews/list', (req: Request, res: Response) => {
     try {
       const asin = req.query.asin as string | undefined;
+      const ticker = typeof req.query.ticker === 'string' ? req.query.ticker.toUpperCase() : undefined;
       const platform = req.query.platform as string | undefined;
       const tone = req.query.tone as string | undefined;
       const reason = req.query.reason as string | undefined;
       const verified_only = req.query.verified_only === '1' || req.query.verified_only === 'true';
       const query = req.query.query as string | undefined;
-      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
-      const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+      // listReviews bounds both: an unreadable or negative value becomes the default.
+      const limit = intParam(req.query.limit);
+      const offset = intParam(req.query.offset);
 
       const result = listReviews(db, {
         asin,
+        ticker,
         platform,
         tone,
         reason,

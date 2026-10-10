@@ -105,6 +105,45 @@ export function migrateReviews(db: DatabaseSync): void {
   tryAddCol('company_financials', 'official_excerpt', 'TEXT');
   // Rows stored before provenance existed were all captured from a feed or a hand-imported CSV.
   tryAddCol('reviews_raw', 'provenance', "TEXT NOT NULL DEFAULT 'captured'");
+  // Amazon Vine reviews (free product) read systematically warmer; stored, but kept out of tone.
+  tryAddCol('reviews_raw', 'is_vine', 'INTEGER NOT NULL DEFAULT 0');
+
+  // The watchlist: who added a company, how exposed its sales are to online reviews, and when its
+  // filings were last read. Exposure is the paper's "channel" caveat: a brand that sells mostly
+  // through Amazon/DTC transmits review tone to revenue; one sold mostly in stores does not.
+  tryAddCol('companies', 'sector', 'TEXT');
+  tryAddCol('companies', 'channel_exposure', "TEXT NOT NULL DEFAULT 'medium'");
+  tryAddCol('companies', 'notes', 'TEXT');
+  tryAddCol('companies', 'added_by', 'TEXT');
+  tryAddCol('companies', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
+  tryAddCol('companies', 'financials_synced_at', 'TEXT');
+  tryAddCol('companies', 'financials_status', 'TEXT');
+  tryAddCol('products', 'added_by', 'TEXT');
+  tryAddCol('products', 'amazon_domain', "TEXT NOT NULL DEFAULT 'amazon.com'");
+  tryAddCol('products', 'collect_interval_hours', 'INTEGER NOT NULL DEFAULT 24');
+  tryAddCol('products', 'last_collected_at', 'TEXT');
+  // Financial rows say where they came from: the bundled demo set, or EDGAR.
+  tryAddCol('company_financials', 'provenance', "TEXT NOT NULL DEFAULT 'seed'");
+
+  // One row per collection attempt, scheduled or manual, successful or not: the audit trail that
+  // makes "why is this quarter thin?" answerable.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS collection_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticker TEXT NOT NULL,
+      asin TEXT,
+      connector TEXT NOT NULL,
+      trigger TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      status TEXT NOT NULL,
+      fetched INTEGER NOT NULL DEFAULT 0,
+      stored INTEGER NOT NULL DEFAULT 0,
+      skipped INTEGER NOT NULL DEFAULT 0,
+      message TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_runs_ticker ON collection_runs (ticker, started_at DESC);
+  `);
 
   // Any index over a column added above must be created after the migration, not in the block
   // that runs against a database which may predate the column.

@@ -171,7 +171,8 @@ export interface ScorerAdapter {
   envKeys: string[];
   /** Whether this adapter needs a credential before it can be attempted at all. */
   requiresKey: boolean;
-  call: (input: ScoreInput, key: string, fetchImpl: typeof fetch) => Promise<ScoreResult>;
+  /** `timeoutMs` is what is left of the chain budget, capped at one provider's own timeout. */
+  call: (input: ScoreInput, key: string, fetchImpl: typeof fetch, timeoutMs: number) => Promise<ScoreResult>;
 }
 
 export interface ScorerDeps {
@@ -187,7 +188,8 @@ export interface ScorerDeps {
 
 /**
  * One documented latency bound for a scoring round, replacing three implicit sequential 5 s
- * timeouts. A caller scoring a batch knows the worst case from this number alone.
+ * timeouts. Every provider call is given only the budget that remains, so a caller scoring a batch
+ * knows the worst case from this number alone.
  */
 export const DEFAULT_CHAIN_BUDGET_MS = 12_000;
 const PROVIDER_TIMEOUT_MS = 5_000;
@@ -210,12 +212,12 @@ const asScore = (parsed: Record<string, unknown> | null, model: string): ScoreRe
 });
 
 /** The three provider calls differ only in URL, auth header, body and where the JSON sits. */
-async function postJson(url: string, body: unknown, headers: Record<string, string>, fetchImpl: typeof fetch): Promise<any> {
+async function postJson(url: string, body: unknown, headers: Record<string, string>, fetchImpl: typeof fetch, timeoutMs: number): Promise<any> {
   const res = await fetchImpl(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+    signal: AbortSignal.timeout(Math.max(1, timeoutMs)),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
   return res.json();
@@ -226,13 +228,13 @@ export const SCORER_CHAIN: ScorerAdapter[] = [
     name: 'typesafe-jev',
     envKeys: ['TYPESAFE_API_KEY', 'JEV_API_KEY'],
     requiresKey: true,
-    call: async (input, key, fetchImpl) => {
+    call: async (input, key, fetchImpl, timeoutMs) => {
       const json = await postJson('https://api.typesafe.ai/v1/chat/completions', {
         model: 'typesafe-jev-mini',
         messages: [{ role: 'user', content: promptFor(input) }],
         temperature: 0.1,
         response_format: { type: 'json_object' },
-      }, { authorization: `Bearer ${key}` }, fetchImpl);
+      }, { authorization: `Bearer ${key}` }, fetchImpl, timeoutMs);
       const content = json?.choices?.[0]?.message?.content;
       if (!content) throw new Error('empty response');
       return asScore(JSON.parse(content), 'typesafe-jev');
@@ -242,12 +244,13 @@ export const SCORER_CHAIN: ScorerAdapter[] = [
     name: 'gemini-2.5-flash',
     envKeys: ['GEMINI_API_KEY'],
     requiresKey: true,
-    call: async (input, key, fetchImpl) => {
+    call: async (input, key, fetchImpl, timeoutMs) => {
       const json = await postJson(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(key)}`,
         { contents: [{ role: 'user', parts: [{ text: promptFor(input) }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0.1 } },
         {},
         fetchImpl,
+        timeoutMs,
       );
       const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!text) throw new Error('empty response');
@@ -258,12 +261,12 @@ export const SCORER_CHAIN: ScorerAdapter[] = [
     name: 'claude-3-5-haiku',
     envKeys: ['ANTHROPIC_API_KEY'],
     requiresKey: true,
-    call: async (input, key, fetchImpl) => {
+    call: async (input, key, fetchImpl, timeoutMs) => {
       const json = await postJson('https://api.anthropic.com/v1/messages', {
         model: 'claude-3-5-haiku-20241022',
         max_tokens: 300,
         messages: [{ role: 'user', content: promptFor(input) }],
-      }, { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, fetchImpl);
+      }, { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, fetchImpl, timeoutMs);
       const text = json?.content?.[0]?.text;
       if (!text) throw new Error('empty response');
       const match = String(text).match(/\{[\s\S]*\}/);
@@ -304,12 +307,15 @@ export async function scoreReview(input: ScoreInput, deps: ScorerDeps = {}): Pro
   for (const adapter of SCORER_CHAIN) {
     const key = keyFor(adapter, env);
     if (adapter.requiresKey && !key) continue; // not configured: never attempted, and reported as such
-    if (adapter.requiresKey && now() - started >= budget) {
+    // Each provider gets only what is left of the budget, so the bound holds for the whole chain
+    // rather than being checked between calls and overrun by the last one.
+    const remaining = budget - (now() - started);
+    if (adapter.requiresKey && remaining <= 0) {
       console.warn(`[reviews] scoring budget of ${budget} ms spent before ${adapter.name}; using the deterministic scorer`);
       continue;
     }
     try {
-      return await adapter.call(input, key, fetchImpl);
+      return await adapter.call(input, key, fetchImpl, Math.min(PROVIDER_TIMEOUT_MS, remaining));
     } catch (e) {
       console.warn(`[reviews] ${adapter.name} failed, falling back: ${(e as Error).message}`);
     }

@@ -230,9 +230,9 @@ export function App() {
   return (
     <div className="app" style={{ '--news-width': `${newsWidth}%`, '--chart-share': `${chartWidth}%` } as React.CSSProperties}>
       <ErrorBoundary name="Status bar"><StatusBar status={status} onRefresh={refresh} now={now} view={view} setView={setView} unread={unread} alerts={alertCount} onOpenShortcuts={() => setShortcutsOpen(true)} /></ErrorBoundary>
-      {status?.collection_paused && status.mode !== 'seed' && <div className="banner seed small" role="status">Automatic source collection is paused. Stored data remain available; on-demand chart history and translation may still fetch.</div>}
-      {status?.mode === 'seed' && <div className="banner seed" role="status"><b>Demo workspace</b><span>Offline data{status.seed_captured_at ? ` · captured ${new Date(status.seed_captured_at).toLocaleDateString()}` : ''} · not live</span></div>}
-      {status?.refreshing && events.length === 0 && markets.length === 0 && <div className="banner loading" role="status">First data load in progress — fetching prediction markets and news (about a minute). The page fills in automatically.</div>}
+      {view !== 'reviews' && status?.collection_paused && status.mode !== 'seed' && <div className="banner seed small" role="status">Automatic source collection is paused. Stored data remain available; on-demand chart history and translation may still fetch.</div>}
+      {view !== 'reviews' && status?.mode === 'seed' && <div className="banner seed" role="status"><b>Demo workspace</b><span>Offline data{status.seed_captured_at ? ` · captured ${new Date(status.seed_captured_at).toLocaleDateString()}` : ''} · not live</span></div>}
+      {view !== 'reviews' && status?.refreshing && events.length === 0 && markets.length === 0 && <div className="banner loading" role="status">First data load in progress — fetching prediction markets and news (about a minute). The page fills in automatically.</div>}
       {connectionError && <div className="banner" role="alert"><b>Tracker disconnected — showing cached data.</b> Last contact {lastContact ? new Date(lastContact).toLocaleString() : 'not established'}. {connectionError}</div>}
       {storageError && <div className="banner" role="alert">Browser storage is unavailable. Keep this page open to preserve unsaved drafts.</div>}
       {error && <div className="banner" role="alert">{error} <button onClick={() => { setRestoreRetry((n) => n + 1); loadData(); }}>Retry workspace</button></div>}

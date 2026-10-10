@@ -35,7 +35,7 @@ export function formatPercent(v: number | null | undefined, digits = 1): string 
 }
 
 export function formatMillions(v: number | null | undefined): string {
-  return isNum(v) ? `$${(v / 1e6).toFixed(0)}M` : NO_VALUE;
+  return isNum(v) ? `$${Math.round(v / 1e6).toLocaleString("en-US")}M` : NO_VALUE;
 }
 
 export type SignalTone = 'warn' | 'good' | 'flat' | 'unknown';

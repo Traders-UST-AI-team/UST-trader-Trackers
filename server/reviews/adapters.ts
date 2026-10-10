@@ -22,7 +22,7 @@ export interface CanaryDeps {
  * block was answered with hand-written reviews shaped exactly like captured ones.
  */
 export class CanaryUnavailableError extends Error {
-  constructor(public readonly provider: 'reddit' | 'bestbuy', public readonly reason: string) {
+  constructor(public readonly provider: 'reddit' | 'bestbuy' | 'amazon' | 'edgar', public readonly reason: string) {
     super(`${provider} unavailable: ${reason}`);
     this.name = 'CanaryUnavailableError';
   }
@@ -103,6 +103,9 @@ export async function fetchBestBuyReviews(params: CanaryFetchParams, deps: Canar
   if (!Array.isArray(reviews)) throw new CanaryUnavailableError('bestbuy', 'unexpected response shape');
 
   return (reviews as Record<string, any>[])
+    // Identity is required, never inferred: without it every such review would collapse onto one
+    // stored row named `bestbuy_undefined`.
+    .filter((r) => r && (typeof r.id === 'number' || (typeof r.id === 'string' && r.id.trim() !== '')))
     .map((r) => ({
       review_id: `bestbuy_${r.id}`,
       asin: params.asin,

@@ -198,7 +198,7 @@ test('quarterly aggregation: computes tone, baseline, delta tone, and flags nega
   const summary = getProductDashboardSummary(memDb, 'B003NR57BY');
   assert.ok(summary);
   assert.equal(summary.company.ticker, 'LOGI');
-  assert.equal(summary.product.asin, 'B003NR57BY');
+  assert.equal(summary.product!.asin, 'B003NR57BY');
   assert.ok(summary.quarters.length >= 6);
 
   // Check FY27 Q2 where the Negative Swing inflection hits (-0.214 delta tone)
@@ -223,7 +223,7 @@ test('reviews service: listReviews filters by platform, tone, and search query',
 
   // Negative reviews only
   const neg = listReviews(memDb, { asin: 'B003NR57BY', tone: 'negative' });
-  assert.ok(neg.reviews.every((r) => r.tone_score <= -1));
+  assert.ok(neg.reviews.every((r) => r.tone_score != null && r.tone_score <= -1));
 
   // Reddit only
   const reddit = listReviews(memDb, { asin: 'B003NR57BY', platform: 'reddit' });
@@ -801,5 +801,101 @@ test('import route: one interface stores raw+score pairs and reports what it ski
     server.closeAllConnections();
     server.close();
     closeReviewsStore(store);
+  }
+});
+
+// ── review fixes: bounded ingest, stable ids, list bounds, chain budget, collector identity ──────
+
+test('ingest: scores with bounded concurrency and keeps rows already committed when a later chunk fails', async () => {
+  const { ingestReviews } = await import('./reviews/ingest.ts');
+  const store = openReviewsStore(':memory:');
+  try {
+    seedReviewsDatabase(store);
+    let inFlight = 0;
+    let peak = 0;
+    let calls = 0;
+    const scorer = async (): Promise<ScoreResult> => {
+      calls++;
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 2));
+      inFlight--;
+      return fixedScorer();
+    };
+    const inputs = Array.from({ length: 10 }, (_, i) => ({ review_id: `bulk_${i}`, body: `Review number ${i}` }));
+    const report = await ingestReviews(store, { asin: 'B003NR57BY', ticker: 'LOGI' }, inputs, { scorer, concurrency: 3, commitEvery: 4 });
+    assert.equal(report.imported, 10);
+    assert.equal(calls, 10);
+    assert.ok(peak <= 3, `at most 3 scoring calls in flight (saw ${peak})`);
+    assert.ok(peak > 1, 'scoring is not serial');
+    assert.equal(countRows(store, "SELECT COUNT(*) c FROM reviews_scored WHERE review_id LIKE 'bulk_%'"), 10);
+  } finally {
+    closeReviewsStore(store);
+  }
+});
+
+test('ingest: a row without an id gets a content-derived id, so re-importing the same export does not duplicate it', async () => {
+  const { ingestReviews } = await import('./reviews/ingest.ts');
+  const store = openReviewsStore(':memory:');
+  try {
+    seedReviewsDatabase(store);
+    const rows = [{ body: 'Scroll wheel squeaks', date: '2025-02-03', author: 'A' }, { body: 'Great battery', date: '2025-02-04', author: 'B' }];
+    const before = countRows(store, 'SELECT COUNT(*) c FROM reviews_raw');
+    await ingestReviews(store, { asin: 'B003NR57BY', ticker: 'LOGI' }, rows, { scorer: fixedScorer });
+    await ingestReviews(store, { asin: 'B003NR57BY', ticker: 'LOGI' }, rows, { scorer: fixedScorer });
+    assert.equal(countRows(store, 'SELECT COUNT(*) c FROM reviews_raw'), before + 2);
+  } finally {
+    closeReviewsStore(store);
+  }
+});
+
+test('listReviews: an unreadable or negative limit is the default page, never "no limit"', () => {
+  const store = openReviewsStore(':memory:');
+  try {
+    seedReviewsDatabase(store);
+    assert.equal(listReviews(store, { asin: 'B003NR57BY', limit: -1 }).reviews.length, 50);
+    assert.equal(listReviews(store, { asin: 'B003NR57BY', limit: Number.NaN }).reviews.length, 50);
+    assert.equal(listReviews(store, { asin: 'B003NR57BY', limit: 5000 }).reviews.length <= 200, true);
+    assert.equal(listReviews(store, { asin: 'B003NR57BY', limit: 5, offset: -3 }).reviews.length, 5);
+  } finally {
+    closeReviewsStore(store);
+  }
+});
+
+test('scoring chain: each provider call is given only the budget that remains', async () => {
+  const timeouts: number[] = [];
+  let clock = 0;
+  const fetchImpl = (async (_url: string, init: RequestInit) => {
+    // AbortSignal.timeout does not expose its delay, so the adapter's timeout is recorded via the clock.
+    void init;
+    clock += 4_000;
+    timeouts.push(clock);
+    throw new Error('timed out');
+  }) as unknown as typeof fetch;
+  const score = await scoreReview(oneReview, {
+    env: { TYPESAFE_API_KEY: 'k', GEMINI_API_KEY: 'g', ANTHROPIC_API_KEY: 'a' },
+    fetchImpl,
+    budgetMs: 6_000,
+    now: () => clock,
+  });
+  assert.equal(score.model_used, 'local-heuristic');
+  assert.equal(timeouts.length, 2, 'the third provider is not attempted once the budget is spent');
+});
+
+test('Best Buy collector: a review without an id is dropped rather than collapsed onto one row', async () => {
+  const savedKey = process.env.BESTBUY_API_KEY;
+  process.env.BESTBUY_API_KEY = 'test-key';
+  try {
+    const mapped = await fetchBestBuyReviews({ asin: 'B003NR57BY', ticker: 'LOGI', bestbuy_sku: '9226065' }, fakeTransport(200, {
+      reviews: [
+        { id: 11, comment: 'Clicks twice', rating: 2, submissionTime: '2025-01-02' },
+        { comment: 'No id here', rating: 1, submissionTime: '2025-01-03' },
+        { id: '', comment: 'Empty id', rating: 1, submissionTime: '2025-01-03' },
+      ],
+    }));
+    assert.deepEqual(mapped.map((r) => r.review_id), ['bestbuy_11']);
+  } finally {
+    if (savedKey === undefined) delete process.env.BESTBUY_API_KEY;
+    else process.env.BESTBUY_API_KEY = savedKey;
   }
 });

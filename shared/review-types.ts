@@ -1,8 +1,24 @@
+import type { SignalOutcome } from './review-signals';
+
+/**
+ * How much of a company's sales run through channels where online reviews move buyers (Amazon,
+ * DTC). The research is clear that review tone only leads revenue where this is high.
+ */
+export type ChannelExposure = 'high' | 'medium' | 'low';
+
 export interface Company {
   ticker: string;
   name: string;
   cik: string | null;
   fiscal_year_end_month: number;
+  sector?: string | null;
+  channel_exposure?: ChannelExposure;
+  notes?: string | null;
+  added_by?: string | null;
+  is_active?: boolean;
+  /** When EDGAR financials were last read, and how that went. */
+  financials_synced_at?: string | null;
+  financials_status?: string | null;
   created_at?: string;
 }
 
@@ -15,6 +31,11 @@ export interface Product {
   bestbuy_sku: string | null;
   reddit_query: string | null;
   is_active: boolean;
+  added_by?: string | null;
+  amazon_domain?: string;
+  /** How often the scheduler collects this product, in hours. */
+  collect_interval_hours?: number;
+  last_collected_at?: string | null;
   created_at?: string;
 }
 
@@ -39,6 +60,8 @@ export interface ReviewRaw {
   source_type: 'csv_plugin' | 'bestbuy_api' | 'reddit_api' | 'manual' | 'seed' | string;
   source_url: string | null;
   provenance: ReviewProvenance;
+  /** Amazon Vine (free product) review; read warmer than paid purchases, so kept out of tone. */
+  is_vine?: boolean;
   created_at?: string;
 }
 
@@ -63,7 +86,18 @@ export interface ReviewScored {
   scored_at?: string;
 }
 
-export interface EnrichedReview extends ReviewRaw, ReviewScored {}
+/**
+ * A stored review with its score. The score fields are null for a row that was never scored, which
+ * must read as "unscored" — not as a neutral tone of 0.
+ */
+export interface EnrichedReview extends ReviewRaw, Omit<ReviewScored, 'tone_score' | 'is_product_related' | 'primary_reason' | 'model_used'> {
+  tone_score: number | null;
+  is_product_related: boolean | null;
+  primary_reason: PrimaryReason | null;
+  model_used: string | null;
+  /** Amazon Vine (free product) review: shown, but excluded from tone. */
+  is_vine: boolean;
+}
 
 export interface CompanyFinancial {
   id: string; // e.g. 'LOGI-FY2025Q3'
@@ -81,6 +115,8 @@ export interface CompanyFinancial {
   accession_number?: string | null;
   official_excerpt?: string | null;
   source_filing_url: string | null;
+  /** 'edgar' when read from SEC XBRL; 'seed' for the bundled demo set. */
+  provenance?: 'edgar' | 'seed';
   created_at?: string;
 }
 
@@ -92,6 +128,12 @@ export interface QuarterlyAggregation {
   review_count: number;
   product_review_count?: number;
   seller_only_count?: number;
+  /** Amazon Vine (free product) reviews: shown, not averaged into tone. */
+  vine_count?: number;
+  /** Reviews that carried tone this quarter — the n behind avg_tone. */
+  tone_review_count?: number;
+  /** Change in mean tone from the previous quarter that had any. */
+  qoq_change?: number | null;
   avg_tone: number | null;
   baseline_tone: number | null; // 4-quarter rolling baseline
   delta_tone: number | null; // avg_tone - baseline_tone
@@ -112,15 +154,38 @@ export interface QuarterlyAggregation {
    */
   financial_match?: 'matched' | 'no_filing';
   /**
-   * The divergence this pilot looks for: tone swung negative while reported revenue was still
-   * growing. It is a canary, not a confirmed earnings miss.
+   * For a negative swing: what revenue did afterwards (see SIGNALS.outcomeHorizonQuarters).
+   * null for a quarter that is not a swing.
    */
+  outcome?: SignalOutcome | null;
+  /** The later filing in which revenue growth slowed, for a hit. */
+  outcome_filing?: { fiscal_label: string; revenue_yoy_growth: number | null; sec_report_date: string | null } | null;
+  /** A swing that revenue growth did not follow — recorded, not dropped. Same as outcome === 'miss'. */
   is_miss?: boolean;
+}
+
+/** How the swings have done against later filings, and how often growth slowed anyway. */
+export interface BacktestSummary {
+  horizon_quarters: number;
+  swings: number;
+  hits: number;
+  misses: number;
+  pending: number;
+  no_filing: number;
+  /** hits / (hits + misses); null before any swing is decided. */
+  hit_rate: number | null;
+  /** How often revenue growth slowed after any reported quarter: what a hit rate must beat. */
+  base_rate: number | null;
+  base_quarters: number;
 }
 
 export interface ReviewDashboardSummary {
   company: Company;
-  product: Product;
+  /** The single listing in view, or null when the whole company (every active product) is. */
+  product: Product | null;
+  /** The listings this summary aggregates. */
+  products: Product[];
+  backtest: BacktestSummary;
   current_status: 'negative_swing' | 'healthy' | 'neutral' | 'sparse_data';
   latest_quarter: QuarterlyAggregation | null;
   quarters: QuarterlyAggregation[];
@@ -178,4 +243,57 @@ export interface ReviewStatusResponse {
   engine_mode: string;
   /** Wall-clock budget for one scoring round across the whole chain. */
   budget_ms: number;
+}
+
+export type CollectionStatus = 'ok' | 'unavailable' | 'error' | 'empty';
+
+/** One collection attempt, scheduled or manual. */
+export interface CollectionRun {
+  id: number;
+  ticker: string;
+  asin: string | null;
+  connector: string;
+  trigger: 'schedule' | 'manual';
+  started_at: string;
+  finished_at: string | null;
+  status: CollectionStatus;
+  fetched: number;
+  stored: number;
+  skipped: number;
+  message: string | null;
+}
+
+/** A data source the tracker can read, and whether it can right now. */
+export interface ConnectorStatus {
+  id: 'amazon' | 'bestbuy' | 'reddit' | 'edgar' | 'csv';
+  label: string;
+  ready: boolean;
+  /** Collected by the scheduler, or only on request. */
+  scheduled: boolean;
+  detail: string;
+}
+
+/** One row of the watchlist overview. */
+export interface WatchlistRow {
+  company: Company;
+  product_count: number;
+  total_reviews: number;
+  reviews_90d: number;
+  latest_quarter: string | null;
+  avg_tone: number | null;
+  delta_tone: number | null;
+  signal: 'negative_swing' | 'positive' | 'stable' | null;
+  current_status: ReviewDashboardSummary['current_status'];
+  is_sparse: boolean;
+  backtest: BacktestSummary;
+  last_collected_at: string | null;
+  /** Mean tone per quarter, oldest first, for a sparkline. */
+  tone_trend: (number | null)[];
+}
+
+export interface ReviewSession {
+  /** Writes need the team code. */
+  write_protected: boolean;
+  /** The code sent with this request was accepted. */
+  can_write: boolean;
 }

@@ -1,62 +1,87 @@
 import type {
+  BacktestSummary,
+  ChannelExposure,
+  CollectionRun,
   Company,
   CompanyFinancial,
+  ConnectorStatus,
   EnrichedReview,
   Product,
   ReviewDashboardSummary,
+  ReviewSession,
   ReviewStatusResponse,
   SnifferDetectionResult,
+  WatchlistRow,
 } from '../shared/review-types';
 import { get, send } from './http';
 
-export const reviewsApi = {
-  companies: () => get<Company[]>('/api/reviews/companies'),
+export interface ReviewListParams {
+  asin?: string;
+  ticker?: string;
+  platform?: string;
+  tone?: string;
+  reason?: string;
+  verified_only?: boolean;
+  query?: string;
+  limit?: number;
+  offset?: number;
+}
 
-  products: (ticker?: string) =>
-    get<Product[]>(`/api/reviews/products${ticker ? `?ticker=${encodeURIComponent(ticker)}` : ''}`),
+export interface EdgarLookup {
+  ticker: string;
+  cik: string;
+  name: string;
+  fiscal_year_end_month: number | null;
+  sector: string | null;
+}
 
-  createProduct: (data: Partial<Product>) =>
-    send<{ success: boolean; asin: string }>('POST', '/api/reviews/products', data),
+export interface ImportResult {
+  success: boolean;
+  imported: number;
+  scored: number;
+  skipped: number;
+  failures: { review_id: string | null; error?: string }[];
+}
 
-  dashboard: (asin?: string) =>
-    get<ReviewDashboardSummary>(`/api/reviews/dashboard${asin ? `?asin=${encodeURIComponent(asin)}` : ''}`),
-
-  list: (params: {
-    asin?: string;
-    platform?: string;
-    tone?: string;
-    reason?: string;
-    verified_only?: boolean;
-    query?: string;
-    limit?: number;
-    offset?: number;
-  }) => {
-    const q = new URLSearchParams();
-    if (params.asin) q.set('asin', params.asin);
-    if (params.platform) q.set('platform', params.platform);
-    if (params.tone) q.set('tone', params.tone);
-    if (params.reason) q.set('reason', params.reason);
-    if (params.verified_only) q.set('verified_only', '1');
-    if (params.query) q.set('query', params.query);
-    if (params.limit != null) q.set('limit', String(params.limit));
-    if (params.offset != null) q.set('offset', String(params.offset));
-    return get<{ reviews: EnrichedReview[]; total: number }>(`/api/reviews/list?${q.toString()}`);
-  },
-
-  sniff: (csv: string) =>
-    send<SnifferDetectionResult>('POST', '/api/reviews/sniff', { csv }),
-
-  importReviews: (asin: string, reviews: any[]) =>
-    send<{ success: boolean; imported: number; scored: number }>('POST', '/api/reviews/import', { asin, reviews }),
-
-  scoreSingle: (payload: { review_id?: string; body?: string; star_rating?: number; title?: string }) =>
-    send<{ success: boolean; score: any }>('POST', '/api/reviews/score-single', payload),
-
-  fetchCanary: (asin: string, type: 'reddit' | 'bestbuy') =>
-    send<{ success: boolean; added: number }>('POST', '/api/reviews/fetch-canary', { asin, type }),
-
-  financials: (ticker?: string) =>
-    get<CompanyFinancial[]>(`/api/reviews/financials${ticker ? `?ticker=${encodeURIComponent(ticker)}` : ''}`),
-
-  status: () => get<ReviewStatusResponse>('/api/reviews/status'),
+const qs = (params: Record<string, string | number | boolean | undefined | null>) => {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === '' || v === false) continue;
+    q.set(k, v === true ? '1' : String(v));
+  }
+  const s = q.toString();
+  return s ? `?${s}` : '';
 };
+
+export const reviewsApi = {
+  session: () => get<ReviewSession>('/api/session'),
+  watchlist: () => get<WatchlistRow[]>('/api/reviews/watchlist'),
+  connectors: () => get<ConnectorStatus[]>('/api/reviews/connectors'),
+  status: () => get<ReviewStatusResponse>('/api/reviews/status'),
+  lookup: (ticker: string) => get<{ found: EdgarLookup | null }>(`/api/reviews/lookup${qs({ ticker })}`),
+
+  companies: () => get<Company[]>('/api/reviews/companies'),
+  addCompany: (input: { ticker: string; channel_exposure: ChannelExposure; name?: string; fiscal_year_end_month?: number; notes?: string; added_by?: string }) =>
+    send<{ company: Company; financials: CollectionRun | null }>('POST', '/api/reviews/companies', input),
+  updateCompany: (ticker: string, patch: { channel_exposure?: ChannelExposure; notes?: string; is_active?: boolean }) =>
+    send<Company>('PATCH', `/api/reviews/companies/${encodeURIComponent(ticker)}`, patch),
+  syncFinancials: (ticker: string) => send<CollectionRun>('POST', `/api/reviews/companies/${encodeURIComponent(ticker)}/financials`),
+
+  products: (ticker?: string) => get<Product[]>(`/api/reviews/products${qs({ ticker })}`),
+  upsertProduct: (input: { asin: string; ticker: string; title: string; category?: string; bestbuy_sku?: string; amazon_domain?: string; collect_interval_hours?: number; added_by?: string }) =>
+    send<Product>('POST', '/api/reviews/products', input),
+  setProductActive: (asin: string, is_active: boolean) => send<Product>('PATCH', `/api/reviews/products/${encodeURIComponent(asin)}`, { is_active }),
+
+  dashboard: (scope: { ticker?: string; asin?: string }) => get<ReviewDashboardSummary>(`/api/reviews/dashboard${qs(scope)}`),
+  list: (params: ReviewListParams) => get<{ reviews: EnrichedReview[]; total: number }>(`/api/reviews/list${qs({ ...params })}`),
+  financials: (ticker: string) => get<CompanyFinancial[]>(`/api/reviews/financials${qs({ ticker })}`),
+  runs: (scope: { ticker?: string; asin?: string; limit?: number }) => get<CollectionRun[]>(`/api/reviews/runs${qs(scope)}`),
+
+  collect: (scope: { ticker?: string; asin?: string }) => send<{ runs: CollectionRun[] }>('POST', '/api/reviews/collect', scope),
+  sniff: (csv: string) => send<SnifferDetectionResult>('POST', '/api/reviews/sniff', { csv }),
+  importReviews: (asin: string, reviews: SnifferDetectionResult['parsedReviews']) => send<ImportResult>('POST', '/api/reviews/import', { asin, reviews }),
+  scoreSingle: (payload: { review_id?: string; body?: string; star_rating?: number; title?: string }) =>
+    send<{ success: boolean; score: unknown }>('POST', '/api/reviews/score-single', payload),
+};
+
+export type { BacktestSummary };

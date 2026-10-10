@@ -1,5 +1,5 @@
-import type { CompanyFinancial, QuarterlyAggregation, ReviewDashboardSummary } from '../../shared/review-types.ts';
-import { classifyQuarter, rollingBaseline, SIGNALS } from '../../shared/review-signals.ts';
+import type { BacktestSummary, CompanyFinancial, QuarterlyAggregation, ReviewDashboardSummary } from '../../shared/review-types.ts';
+import { classifyQuarter, rollingBaseline, SIGNALS, type SignalOutcome } from '../../shared/review-signals.ts';
 import { dateToCalendarQuarter, fiscalPeriodForCalendarQuarter, matchPeriodByDate, type CalendarQuarter } from './fiscal.ts';
 
 /**
@@ -14,6 +14,8 @@ export interface ScoredReviewRow {
   is_product_related: number | boolean | null;
   primary_reason: string | null;
   tags_json: string | null;
+  /** Amazon Vine (free product) review: counted, but kept out of tone. */
+  is_vine?: number | boolean | null;
 }
 
 export interface QuarterSeries {
@@ -48,8 +50,10 @@ export function quarterToneSeries(
   }
 
   const sortedKeys = Array.from(buckets.keys()).sort();
+  const latestFiledEnd = opts.financials.reduce<string | null>((m, f) => (m == null || f.period_end_date > m ? f.period_end_date : m), null);
   const quarters: QuarterlyAggregation[] = [];
   const toneHistory: number[] = [];
+  let previousTone: number | null = null;
   let firstNegativeSwingDate: string | null = null;
 
   for (const qKey of sortedKeys) {
@@ -64,6 +68,7 @@ export function quarterToneSeries(
     let qualityDeclineCount = 0;
     let productCount = 0;
     let sellerOnlyCount = 0;
+    let vineCount = 0;
     let redditToneSum = 0;
     let redditCount = 0;
     let amazonToneSum = 0;
@@ -84,6 +89,9 @@ export function quarterToneSeries(
           redditToneSum += Number(r.tone_score);
           redditCount++;
         }
+      } else if (r.is_vine === 1 || r.is_vine === true) {
+        // Free-product reviews read systematically warmer; they are shown, never averaged in.
+        vineCount++;
       } else if (product) {
         productCount++;
         if (r.tone_score != null) {
@@ -112,13 +120,21 @@ export function quarterToneSeries(
     if (avgTone != null) toneHistory.push(avgTone);
 
     const deltaTone = avgTone != null && baselineTone != null ? round3(avgTone - baselineTone) : null;
-    const { signal, is_negative_swing, is_sparse } = classifyQuarter({ delta_tone: deltaTone, review_count: qReviews.length });
+    const qoqChange = avgTone != null && previousTone != null ? round3(avgTone - previousTone) : null;
+    if (avgTone != null) previousTone = avgTone;
+    // Sparse is judged on the reviews that actually carry tone, not on every stored row.
+    const { signal, is_negative_swing, is_sparse } = classifyQuarter({ delta_tone: deltaTone, review_count: scoredCount, qoq_change: qoqChange });
 
     if (is_negative_swing && !firstNegativeSwingDate && startDate) firstNegativeSwingDate = startDate;
 
-    // A "miss" here is the divergence this pilot looks for: tone swung negative while reported
-    // revenue was still growing. That is the canary, not a confirmatory earnings miss.
-    const isMiss = Boolean(is_negative_swing && matchedFin && matchedFin.revenue_yoy_growth != null && matchedFin.revenue_yoy_growth > 0);
+    // A swing is only worth something if revenue followed it. The outcome is decided against the
+    // filings that came *after* the swing quarter (see SIGNALS.outcomeHorizonQuarters), and a swing
+    // that revenue did not follow is recorded as a miss, never quietly dropped.
+    // A swing in a quarter newer than the latest filing is not untestable, just early: its own
+    // report has not been filed yet.
+    const notYetReported = !matchedFin && latestFiledEnd != null && calendar.start > latestFiledEnd;
+    const outcome = is_negative_swing ? (notYetReported ? 'pending' : swingOutcome(matchedFin, opts.financials)) : null;
+    const confirming = outcome === 'hit' && matchedFin ? confirmingFiling(matchedFin, opts.financials) : null;
 
     quarters.push({
       quarter_label: fiscal.label,
@@ -128,6 +144,9 @@ export function quarterToneSeries(
       review_count: qReviews.length,
       product_review_count: productCount,
       seller_only_count: sellerOnlyCount,
+      vine_count: vineCount,
+      tone_review_count: scoredCount,
+      qoq_change: qoqChange,
       avg_tone: avgTone,
       baseline_tone: baselineTone,
       delta_tone: deltaTone,
@@ -141,7 +160,11 @@ export function quarterToneSeries(
       is_negative_swing,
       financial: matchedFin,
       financial_match: matchedFin ? 'matched' : 'no_filing',
-      is_miss: isMiss,
+      outcome,
+      outcome_filing: confirming
+        ? { fiscal_label: confirming.fiscal_label, revenue_yoy_growth: confirming.revenue_yoy_growth, sec_report_date: confirming.sec_report_date }
+        : null,
+      is_miss: outcome === 'miss',
       signal,
     });
   }
@@ -162,6 +185,68 @@ export function quarterToneSeries(
     quarters,
     totalNegatives,
     topTags: Array.from(tagCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([tag, count]) => ({ tag, count })),
+  };
+}
+
+/** The reported quarters after `fin`, oldest first. */
+function followingQuarters(fin: CompanyFinancial, financials: CompanyFinancial[]): CompanyFinancial[] {
+  return financials
+    .filter((f) => f.period_start_date > fin.period_end_date || (f.period_start_date >= fin.period_end_date && f.id !== fin.id))
+    .sort((a, b) => a.period_end_date.localeCompare(b.period_end_date))
+    .slice(0, SIGNALS.outcomeHorizonQuarters);
+}
+
+/** Whether revenue growth slowed within the horizon after the quarter reported as `fin`. */
+function decelerated(fin: CompanyFinancial, financials: CompanyFinancial[]): SignalOutcome {
+  if (fin.revenue_yoy_growth == null) return 'no_filing';
+  const next = followingQuarters(fin, financials);
+  if (next.some((f) => f.revenue_yoy_growth != null && f.revenue_yoy_growth < fin.revenue_yoy_growth!)) return 'hit';
+  if (next.length >= SIGNALS.outcomeHorizonQuarters && next.every((f) => f.revenue_yoy_growth != null)) return 'miss';
+  return 'pending';
+}
+
+/** The first following filing in which revenue growth was below `fin`'s — the one that confirmed a hit. */
+export function confirmingFiling(fin: CompanyFinancial, financials: CompanyFinancial[]): CompanyFinancial | null {
+  if (fin.revenue_yoy_growth == null) return null;
+  return followingQuarters(fin, financials).find((f) => f.revenue_yoy_growth != null && f.revenue_yoy_growth < fin.revenue_yoy_growth!) ?? null;
+}
+
+/**
+ * The outcome of a negative swing in the quarter reported as `fin`: hit when revenue YoY growth
+ * slowed in one of the next `outcomeHorizonQuarters` reported quarters, miss when they are all
+ * reported and none did, pending until then, no_filing when there is nothing to test against.
+ */
+export function swingOutcome(fin: CompanyFinancial | null | undefined, financials: CompanyFinancial[]): SignalOutcome {
+  return fin ? decelerated(fin, financials) : 'no_filing';
+}
+
+/**
+ * Hit rate of the swings, set against the base rate: how often revenue growth slowed after *any*
+ * reported quarter. A hit rate no better than the base rate means the signal adds nothing.
+ */
+export function backtestSummary(quarters: QuarterlyAggregation[], financials: CompanyFinancial[]): BacktestSummary {
+  const swings = quarters.filter((q) => q.is_negative_swing);
+  const tally = (o: SignalOutcome) => swings.filter((q) => q.outcome === o).length;
+  const hits = tally('hit');
+  const misses = tally('miss');
+
+  let baseHits = 0;
+  let baseDecided = 0;
+  for (const fin of financials) {
+    const o = decelerated(fin, financials);
+    if (o === 'hit') { baseHits++; baseDecided++; } else if (o === 'miss') baseDecided++;
+  }
+
+  return {
+    horizon_quarters: SIGNALS.outcomeHorizonQuarters,
+    swings: swings.length,
+    hits,
+    misses,
+    pending: tally('pending'),
+    no_filing: tally('no_filing'),
+    hit_rate: hits + misses > 0 ? Number((hits / (hits + misses)).toFixed(3)) : null,
+    base_rate: baseDecided > 0 ? Number((baseHits / baseDecided).toFixed(3)) : null,
+    base_quarters: baseDecided,
   };
 }
 
@@ -193,9 +278,10 @@ export function canarySummary(
     const firstSwing = quarters.find((q) => q.is_negative_swing);
     if (firstSwing) leadTimeDays = Math.max(0, Math.round((Date.parse(`${firstSwing.start_date}T00:00:00Z`) - defectTs) / 86_400_000));
     if (leadTimeDays === 0) {
-      const missWithFiling = quarters.find((q) => q.is_miss && q.financial?.sec_report_date);
-      if (missWithFiling?.financial?.sec_report_date) {
-        leadTimeDays = Math.max(0, Math.round((Date.parse(`${missWithFiling.financial.sec_report_date}T00:00:00Z`) - defectTs) / 86_400_000));
+      // Otherwise: ahead of the filing that confirmed a swing (revenue growth slowed).
+      const confirmed = quarters.find((q) => q.outcome === 'hit' && q.outcome_filing?.sec_report_date);
+      if (confirmed?.outcome_filing?.sec_report_date) {
+        leadTimeDays = Math.max(0, Math.round((Date.parse(`${confirmed.outcome_filing.sec_report_date}T00:00:00Z`) - defectTs) / 86_400_000));
       }
     }
   }

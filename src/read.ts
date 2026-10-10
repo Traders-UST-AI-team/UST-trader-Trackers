@@ -94,7 +94,12 @@ export function useResource<T>(key: unknown, load: () => Promise<T>, opts: ReadO
   }, [key, token, label, quiet]);
 
   const reload = useCallback(() => setToken((n) => n + 1), []);
-  const replace = useCallback((value: T) => setSnapshot((s) => reduceRead(s, { type: 'ready', value })), []);
+  const replace = useCallback((value: T) => {
+    // Advance the generation first: a read already in flight was asked before this write and must
+    // not overwrite the value the write returned.
+    generation.current.next();
+    setSnapshot((s) => reduceRead(s, { type: 'ready', value }));
+  }, []);
 
   return { ...snapshot, reload, replace };
 }

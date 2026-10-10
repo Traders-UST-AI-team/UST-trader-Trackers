@@ -29,14 +29,18 @@ import { registerMaritimeRoutes } from './maritime/routes.ts';
 import { checkRegistrySet } from './research/coverage.ts';
 import { afterCollection } from './research/hooks.ts';
 import { broadcastStreamEvent, registerStreamRoutes, closeAllStreamClients } from './stream.ts';
-import { registerReviewRoutes, REVIEWS_JSON_LIMIT } from './reviews/routes.ts';
+import { registerReviewRoutes, REVIEWS_JSON_LIMIT, REVIEWS_LARGE_BODY_PATHS } from './reviews/routes.ts';
 import { MARKET_SELECT, eventView, linksFor, marketView, type EventViewDeps } from './views.ts';
 import { closeReviewsStore, openReviewsStore } from './reviews/db.ts';
 import { seedReviewsDatabase } from './reviews/seed.ts';
+import { startReviewsScheduler } from './reviews/tracker.ts';
+import { registerTeamRoutes, teamWriteGuard } from './teamauth.ts';
 import type { HistoryPoint, LinkedContract, MarketHistory, Status } from '../shared/types.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT ?? 5173);
+// Loopback by default: a local install is not reachable from the network. A container sets HOST=0.0.0.0.
+const HOST = process.env.HOST ?? '127.0.0.1';
 const PROD = process.env.NODE_ENV === 'production';
 const SEED = !!process.env.TRACKER_SEED;
 if (SEED) {
@@ -48,8 +52,14 @@ const STALE_AFTER_MIN = 5;
 
 const app = express();
 // The reviews importer posts whole CSV exports, which run to megabytes; the default 100 kb limit
-// would reject them before the route runs. See REVIEWS_JSON_LIMIT.
-app.use(express.json({ limit: REVIEWS_JSON_LIMIT }));
+// would reject them before the route runs. Only those two endpoints get the larger limit (see
+// REVIEWS_JSON_LIMIT); a body they parse is marked as parsed, so the default parser skips it.
+// With TEAM_WRITE_TOKEN set, reads stay public and every write needs the team code. It runs before
+// any body is parsed, so an unauthorised upload is refused without being read.
+app.use(teamWriteGuard);
+app.use(REVIEWS_LARGE_BODY_PATHS, express.json({ limit: REVIEWS_JSON_LIMIT }));
+app.use(express.json());
+registerTeamRoutes(app);
 
 type Row = Record<string, any>;
 const srcMeta = SOURCE_META;
@@ -141,6 +151,9 @@ if (reviewsSeed) {
     : `[reviews] dataset up to date: ${reviewsSeed.counts.reviews} reviews (${reviewsSeed.counts.seed_reviews} demo, ${reviewsSeed.counts.captured_reviews} captured)`);
 }
 registerReviewRoutes(app, reviewsStore);
+// The watchlist keeps itself current: due listings are collected and filings re-read in the background.
+// REVIEWS_AUTO_COLLECT=0 turns that off (tests, or a deployment that should only show stored data).
+const stopReviewsScheduler = process.env.REVIEWS_AUTO_COLLECT === '0' ? () => {} : startReviewsScheduler(reviewsStore);
 checkRegistrySet();
 console.log(`[research] ${afterCollection('ingest')}`); // mirror provider end dates on start (local only)
 registerWalletJobs(() => {
@@ -220,10 +233,10 @@ if (PROD) {
 }
 
 // Release leases and close streaming clients on shutdown so a restarted server (e.g. `tsx watch`) does not wait for them to expire.
-for (const sig of ['SIGINT', 'SIGTERM'] as const) process.once(sig, () => { releaseAllLeases(); closeAllStreamClients(); closeReviewsStore(reviewsStore); process.exit(0); });
+for (const sig of ['SIGINT', 'SIGTERM'] as const) process.once(sig, () => { releaseAllLeases(); closeAllStreamClients(); stopReviewsScheduler(); closeReviewsStore(reviewsStore); process.exit(0); });
 
-app.listen(PORT, '127.0.0.1', () => {
-  console.log(`\n  War Tracker  →  http://localhost:${PORT}  (${PROD ? 'production' : 'dev'})\n`);
+app.listen(PORT, HOST, () => {
+  console.log(`\n  War Tracker  →  http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}  (${PROD ? 'production' : 'dev'})\n`);
   maybeRefresh('startup');
   if (!SEED && !process.env.TRACKER_NO_AUTO_REFRESH) startScheduler();
 });

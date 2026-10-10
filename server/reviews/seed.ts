@@ -562,12 +562,15 @@ export function seedReviewsDatabase(
     insertProduct.run(p.asin, p.ticker, p.title, p.category, p.amazon_url, p.bestbuy_sku, p.reddit_query, p.is_active ? 1 : 0);
   }
 
-  // Insert financials
+  // Insert financials — but never for a company whose filings have been read from EDGAR: the real
+  // figures replace the bundled ones and must not be diluted by them on the next dataset bump.
   const insertFin = db.prepare(`
     INSERT OR IGNORE INTO company_financials (id, ticker, fiscal_year, fiscal_quarter, fiscal_label, period_start_date, period_end_date, sec_report_date, revenue_usd, revenue_yoy_growth, operating_income_usd, gross_margin, accession_number, official_excerpt, source_filing_url)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
+  const hasEdgar = db.prepare("SELECT 1 FROM company_financials WHERE ticker = ? AND provenance = 'edgar' LIMIT 1");
   for (const f of SEED_FINANCIALS_ALL) {
+    if (hasEdgar.get(f.ticker)) continue;
     insertFin.run(
       f.id,
       f.ticker,

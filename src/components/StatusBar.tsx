@@ -86,9 +86,20 @@ export function StatusBar({ status, onRefresh, now, view, setView, unread, alert
         </nav>
       )}
 
-      <div ref={health} className="sources" aria-label="Source health">
+      {/* Source health describes the trader workspace's feeds; the reviews workspace has its own. */}
+      <div ref={health} className="sources" aria-label="Source health" hidden={isReviewMode}>
         <button className={`healthsum ${problems ? 'warn' : 'good'}`} onClick={() => setOpen(!open)} aria-expanded={open} title="Show every source">
-          <span>{!status ? 'Connecting…' : status.mode === 'seed' ? '● Demo data' : problems + count('blocked') > 0 ? `◐ ${problems + count('blocked')} source issues` : '● Sources healthy'}</span>
+          {/* Failed, stale and pending stay separate: an outage must not read like a source that is
+              merely not connected by design (blocked sources are listed in the panel, not counted here).
+              Seed mode fetches nothing, so staleness there is expected and the banner already says so. */}
+          {!status ? <span>Connecting…</span>
+            : status.mode === 'seed' ? <span>● Demo data</span>
+            : problems === 0 ? <span className="ok">● Sources healthy</span>
+            : <>
+              {count('err') > 0 && <span className="err">✕ {count('err')} failed</span>}
+              {count('stale') > 0 && <span className="stale">◐ {count('stale')} stale</span>}
+              {count('never') > 0 && <span className="never">○ {count('never')} pending</span>}
+            </>}
         </button>
         {open && (
           <div className="healthpanel" role="region" aria-label="All sources">
