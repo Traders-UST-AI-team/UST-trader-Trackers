@@ -65,8 +65,17 @@ export interface ReadOptions {
 }
 
 /**
- * @param key    Re-reads whenever this changes. Must be a primitive or a memoised tuple: a fresh
- *               object or array each render would re-read forever.
+ * The identity of a read key. Arrays and objects are compared by value, not by reference: a tuple
+ * written inline (`[versionKey, win]`) is a new array on every render, and comparing it by
+ * reference re-read on every render — each response re-rendered, which re-read again, forever.
+ */
+export function readKeyId(key: unknown): unknown {
+  return typeof key === 'object' && key !== null ? JSON.stringify(key) : key;
+}
+
+/**
+ * @param key    Re-reads whenever its value changes. A primitive, or a tuple/object of primitives
+ *               (compared by value, so writing it inline is safe).
  * @param load   The read itself. Recreated every render is fine; it is called through a ref.
  * @param opts   `label` for messages, `quiet` for reads the UI treats as optional.
  */
@@ -77,6 +86,7 @@ export function useResource<T>(key: unknown, load: () => Promise<T>, opts: ReadO
   const loadRef = useRef(load);
   loadRef.current = load;
   const { label, quiet } = opts;
+  const keyId = readKeyId(key);
 
   useEffect(() => {
     const current = generation.current.next();
@@ -91,7 +101,7 @@ export function useResource<T>(key: unknown, load: () => Promise<T>, opts: ReadO
         setSnapshot((s) => reduceRead(s, { type: 'fail', message: `${label} could not be loaded: ${e.message}` }));
         if (!quiet) toast(`${label} could not be loaded.`, 'error');
       });
-  }, [key, token, label, quiet]);
+  }, [keyId, token, label, quiet]);
 
   const reload = useCallback(() => setToken((n) => n + 1), []);
   const replace = useCallback((value: T) => {
