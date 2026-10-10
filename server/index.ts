@@ -1,7 +1,8 @@
 import { cachedHeadlines, cachedNewsTranslation, createNewsTranslator, registerHeadlineJob } from './translation.ts';
 import express from 'express';
+import compression from 'compression';
 import { createServer as createVite } from 'vite';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync } from 'node:fs';
 import { db, kvGet } from './db.ts';
@@ -51,12 +52,16 @@ const AUTO_REFRESH_MIN = 10;
 const STALE_AFTER_MIN = 5;
 
 const app = express();
-// The reviews importer posts whole CSV exports, which run to megabytes; the default 100 kb limit
-// would reject them before the route runs. Only those two endpoints get the larger limit (see
-// REVIEWS_JSON_LIMIT); a body they parse is marked as parsed, so the default parser skips it.
+// Responses are gzip-compressed: the client bundle and the event/market lists are megabytes as
+// plain text and a few hundred kilobytes compressed. The event stream is excluded — compression
+// buffers output, which would hold server-sent events back instead of delivering them.
+app.use(compression({ filter: (req, res) => req.path !== '/api/stream' && compression.filter(req, res) }));
 // With TEAM_WRITE_TOKEN set, reads stay public and every write needs the team code. It runs before
 // any body is parsed, so an unauthorised upload is refused without being read.
 app.use(teamWriteGuard);
+// The reviews importer posts whole CSV exports, which run to megabytes; the default 100 kb limit
+// would reject them before the route runs. Only those two endpoints get the larger limit (see
+// REVIEWS_JSON_LIMIT); a body they parse is marked as parsed, so the default parser skips it.
 app.use(REVIEWS_LARGE_BODY_PATHS, express.json({ limit: REVIEWS_JSON_LIMIT }));
 app.use(express.json());
 registerTeamRoutes(app);
@@ -225,8 +230,12 @@ setInterval(() => maybeRefresh('timer'), AUTO_REFRESH_MIN * 60_000).unref();
 if (PROD) {
   const dist = resolve(root, 'dist');
   if (!existsSync(dist)) { console.error('dist/ missing — run `npm run start` (builds first) or `npm run dev`.'); process.exit(1); }
-  app.use(express.static(dist));
-  app.get('/{*splat}', (_req, res) => res.sendFile(resolve(dist, 'index.html')));
+  // Built assets carry a content hash in their name, so a browser may keep them forever; the page
+  // itself must be re-checked every load so a deploy is picked up at once.
+  app.use(express.static(dist, {
+    setHeaders: (res, file) => res.setHeader('Cache-Control', file.includes(`${sep}assets${sep}`) ? 'public, max-age=31536000, immutable' : 'no-cache'),
+  }));
+  app.get('/{*splat}', (_req, res) => { res.setHeader('Cache-Control', 'no-cache'); res.sendFile(resolve(dist, 'index.html')); });
 } else {
   const vite = await createVite({ root, server: { middlewareMode: true, hmr: { port: PORT < 64535 ? PORT + 1000 : PORT - 1000 } }, appType: 'spa' });
   app.use(vite.middlewares);
